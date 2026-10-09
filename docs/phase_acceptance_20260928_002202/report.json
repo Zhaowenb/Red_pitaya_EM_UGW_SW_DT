@@ -1,0 +1,114 @@
+[
+  {
+    "waveform": "sine",
+    "requested_phase_deg": 0,
+    "measured_phase_deg": -0.20860941554389,
+    "phase_error_deg": -0.20860941554389,
+    "measured_vpp": {
+      "A": 0.099609375,
+      "B": 0.10009765625
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "sine",
+    "requested_phase_deg": 90,
+    "measured_phase_deg": 89.7839960923647,
+    "phase_error_deg": -0.2160039076352973,
+    "measured_vpp": {
+      "A": 0.10009765625,
+      "B": 0.1002197265625
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "sine",
+    "requested_phase_deg": 180,
+    "measured_phase_deg": 179.7941554525413,
+    "phase_error_deg": -0.20584454745869607,
+    "measured_vpp": {
+      "A": 0.0997314453125,
+      "B": 0.0999755859375
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "sine",
+    "requested_phase_deg": -90,
+    "measured_phase_deg": -90.24499989671045,
+    "phase_error_deg": -0.2449998967104534,
+    "measured_vpp": {
+      "A": 0.0997314453125,
+      "B": 0.0999755859375
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "hann_burst",
+    "requested_phase_deg": 0,
+    "measured_phase_deg": -0.2133464626837167,
+    "phase_error_deg": -0.2133464626837167,
+    "measured_vpp": {
+      "A": 0.0989990234375,
+      "B": 0.099365234375
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "hann_burst",
+    "requested_phase_deg": 90,
+    "measured_phase_deg": 88.1775845477078,
+    "phase_error_deg": -1.822415452292205,
+    "measured_vpp": {
+      "A": 0.0994873046875,
+      "B": 0.09716796875
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "hann_burst",
+    "requested_phase_deg": 180,
+    "measured_phase_deg": 179.76035624022154,
+    "phase_error_deg": -0.23964375977845975,
+    "measured_vpp": {
+      "A": 0.0989990234375,
+      "B": 0.0994873046875
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  },
+  {
+    "waveform": "hann_burst",
+    "requested_phase_deg": -90,
+    "measured_phase_deg": -91.72808232204113,
+    "phase_error_deg": -1.728082322041132,
+    "measured_vpp": {
+      "A": 0.0994873046875,
+      "B": 0.0975341796875
+    },
+    "samples": 50000,
+    "actual_rate": 5000000.0,
+    "overflow": [],
+    "passed": true
+  }
+]

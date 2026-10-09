@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hann Burst Scope</title>
+  <link rel="icon" href="web/favicon.png">
+  <style>
+    :root{color-scheme:dark;font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:#081015;color:#dce8ed;overflow:hidden}
+    .shell{height:52px;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid #263743;background:#0d171d;position:relative;z-index:20}
+    .home,.retry{display:inline-flex;align-items:center;gap:8px;border:1px solid #314650;border-radius:8px;background:#142229;color:#e3edf1;padding:8px 12px;text-decoration:none;font:600 12px inherit;cursor:pointer}
+    .home:hover,.retry:hover{border-color:#35d0ba;background:#183038}.home svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8}
+    .title{font-size:13px;font-weight:650}.status{margin-left:auto;color:#8ca7b4;font:11px Consolas,monospace}.status.ok{color:#75d8c8}.status.error{color:#ff8997}
+    #message{height:calc(100vh - 52px);display:grid;place-items:center;text-align:center}.launch-card{max-width:440px;padding:34px;border:1px solid #263743;border-radius:16px;background:#0d171d}.launch-card img{width:62px}.launch-card p{color:#98afb9;line-height:1.7}
+    #message[hidden]{display:none}
+    iframe{position:fixed;inset:52px 0 0;width:100%;height:calc(100% - 52px);border:0;background:#0b1318}
+  </style>
+</head>
+<body>
+  <header class="shell">
+    <a class="home" id="home" href="/#" title="返回 Red Pitaya 主界面" aria-label="返回 Red Pitaya 主界面">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8M5.5 9.5V21h13V9.5M9.5 21v-7h5v7"/></svg>
+      返回主界面
+    </a>
+    <span class="title">Hann Burst Scope</span>
+    <span id="shellStatus" class="status">正在启动板端服务…</span>
+  </header>
+  <div id="message"><div class="launch-card"><img src="web/icon.svg" alt=""><p>正在启动 ADC / DAC 独占服务和分析服务，请稍候。</p><button class="retry" id="retry" type="button">重新连接</button></div></div>
+  <script>
+    const status=document.getElementById('shellStatus');
+    const message=document.getElementById('message');
+    let frame=null,attempt=0;
+    function frameUrl(){const url=new URL(location.href);url.port='4825';url.pathname='/measure';url.search='';url.hash='';return url.href;}
+    function attach(){
+      if(frame)frame.remove();
+      frame=document.createElement('iframe');frame.title='Hann Burst Scope 控制台';frame.src=frameUrl();
+      frame.addEventListener('load',()=>{message.hidden=true;status.textContent='板端服务已连接';status.className='status ok';});
+      document.body.append(frame);
+    }
+    async function serviceReady(){
+      try{await fetch(frameUrl(),{mode:'no-cors',cache:'no-store'});return true;}catch{return false;}
+    }
+    async function start(){
+      attempt+=1;status.textContent=`正在启动板端服务 · ${attempt}`;status.className='status';message.hidden=false;
+      try{await fetch('/bazaar?start=hann_scope',{cache:'no-store'});}catch{}
+      for(let retry=0;retry<30;retry+=1){
+        if(await serviceReady()){attach();return;}
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      status.textContent='板端服务启动失败';status.className='status error';
+    }
+    document.getElementById('retry').addEventListener('click',start);
+    document.getElementById('home').addEventListener('click',()=>{status.textContent='正在安全退出…';});
+    setInterval(async()=>{
+      if(frame&&!(await serviceReady())){
+        frame.remove();frame=null;message.hidden=false;status.textContent='板端服务已断开';status.className='status error';
+      }
+    },3000);
+    start();
+  </script>
+</body>
+</html>

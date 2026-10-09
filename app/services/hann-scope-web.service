@@ -1,0 +1,16 @@
+[Unit]
+Description=Hann Scope web and analysis
+PartOf=hann-scope.target
+Requires=hann-scope-hardware.service
+After=hann-scope-hardware.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/redpitaya/www/apps/hann_scope
+Environment=HANNSCOPE_DATA=/home/redpitaya/hann_scope_data
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+ExecStart=/usr/bin/python3 -m redscope.server --port 4825
+TimeoutStopSec=5
+Restart=no
+UMask=0077

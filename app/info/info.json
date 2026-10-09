@@ -1,0 +1,6 @@
+{
+    "name": "Hann Burst Scope",
+    "version": "2.0.0",
+    "revision": "local",
+    "description": "Dual-output acquisition, parameter sweeps, FFT/STFT/WPD/CWT and archive analysis"
+}

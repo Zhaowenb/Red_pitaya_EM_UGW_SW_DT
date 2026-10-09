@@ -1,0 +1,59 @@
+"""Mechanical follow-up: retain board UI fixes and isolate legacy test fixtures."""
+import ast
+from pathlib import Path
+import re
+import zipfile
+ROOT=Path(__file__).resolve().parents[1]
+def save(path,text):
+    assert path.resolve().is_relative_to(ROOT)
+    path.write_text(text,encoding='utf-8')
+def function(text,name):
+    return re.search(r'^(?:async )?function '+name+r'\([^\n]*\).*?^}',text,re.M|re.S).group()
+with zipfile.ZipFile(ROOT/'dist/before-local-port-20260927.zip') as z:
+    previous=z.read('app/web/app.js').decode('utf-8-sig')
+path=ROOT/'app/web/app.js'
+text=path.read_text(encoding='utf-8')
+for name in ('loadSelectedAnalysisFile','refreshAnalysis','drawAnalysisWaveform','resetAnalysisView','installAnalysisCanvasInteraction'):
+    text=text.replace(function(text,name),function(previous,name),1)
+text=text.replace('PicoSDK 实机采集','Red Pitaya 实机采集')
+text=text.replace('  "simulate", "sampleRate",','  "sampleRate",')
+save(path,text)
+path=ROOT/'app/web/index.html'
+text=path.read_text(encoding='utf-8')
+text=text.replace('Pico AWG','Red Pitaya OUT').replace('所选 Pico 通道','IN1 / IN2').replace('接入 Pico','接入 Red Pitaya').replace('此板或 Pico','此板或 Red Pitaya').replace('相对 Pico 触发点','相对 ADC 触发点').replace('PicoScope 或 AWG','采集或 AWG')
+text=text.replace('八通道波形','IN1 / IN2 波形')
+text=re.sub(r'value="F:[^"]*Pico_4824A[^\"]*"','value=""',text)
+save(path,text)
+# Extract only the deterministic legacy simulator, not the USB driver. This is
+# a test fixture for old three-channel files, not a board acquisition capability.
+source=(ROOT.parent/'Pico_4824A/pico4824a/device.py').read_text(encoding='utf-8')
+cls=next(n for n in ast.parse(source).body if isinstance(n,ast.ClassDef) and n.name=='Pico4824A')
+method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='_simulate_capture')
+body='\n'.join(source.splitlines()[method.lineno-1:method.end_lineno]).replace('def _simulate_capture(', 'def capture(')
+fixture='''"""Legacy multi-channel waveform fixture, never used by the application."""
+import math
+import numpy as np
+from redscope.config import AcquisitionConfig
+from redscope.device import CaptureResult
+from redscope.waveforms import normalized_waveform
+
+class Pico4824A:
+    def __init__(self, simulate=True):
+        if not simulate: raise ValueError('Fixture is simulation-only')
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+'''+body+'\n'
+save(ROOT/'tests/legacy_fixture.py',fixture)
+for name in ('lcr_linearity','big_signal_linearity'):
+    path=ROOT/f'tests/test_upstream_{name}.py'
+    text=path.read_text(encoding='utf-8').replace('from redscope.device import CaptureResult, Pico4824A','from redscope.device import CaptureResult\nfrom legacy_fixture import Pico4824A')
+    save(path,text)
+# Remove the unreachable three-channel orchestration entry body.
+path=ROOT/'app/redscope/web.py'
+text=path.read_text(encoding='utf-8')
+tree=ast.parse(text)
+cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='WebControlState')
+node=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='start_lcr_linearity')
+lines=text.splitlines(keepends=True)
+lines[node.lineno-1:node.end_lineno]=['    def start_lcr_linearity(self, raw: dict[str, Any]) -> int:\n        raise ValueError(THREE_CHANNEL_LIMIT)\n']
+save(path,''.join(lines))

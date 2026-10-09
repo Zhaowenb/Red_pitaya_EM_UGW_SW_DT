@@ -1,0 +1,13 @@
+[Unit]
+Description=Hann Scope exclusive ADC/DAC owner
+PartOf=hann-scope.target
+Before=hann-scope-web.service
+
+[Service]
+Type=simple
+RuntimeDirectory=hann_scope
+WorkingDirectory=/opt/redpitaya/www/apps/hann_scope
+ExecStart=/opt/redpitaya/www/apps/hann_scope/hann-hardware
+TimeoutStopSec=5
+Restart=no
+UMask=0077

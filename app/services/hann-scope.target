@@ -1,0 +1,4 @@
+[Unit]
+Description=Hann Burst Scope application
+Requires=hann-scope-hardware.service hann-scope-web.service
+After=hann-scope-hardware.service hann-scope-web.service

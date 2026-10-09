@@ -1,0 +1,106 @@
+"""One-time mechanical source merge. Reads Pico sources; writes only red_pitaya.
+
+Run once against the pre-port tree. Follow-up hardware adaptations are separate.
+"""
+import ast
+import hashlib
+import json
+from pathlib import Path
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT.parent / 'Pico_4824A'
+TARGET = ROOT / 'app'
+
+def read(path):
+    return path.read_text(encoding='utf-8-sig')
+
+def write(path, text):
+    assert path.resolve().is_relative_to(ROOT)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding='utf-8')
+
+def methods(text, name):
+    cls = next(n for n in ast.parse(text).body if isinstance(n, ast.ClassDef) and n.name == name)
+    lines = text.splitlines(keepends=True)
+    return {n.name: ''.join(lines[n.lineno-1:n.end_lineno]) + '\n' for n in cls.body if isinstance(n, ast.FunctionDef)}
+
+def replace_method(text, cls, name, replacement):
+    old = methods(text, cls)[name]
+    assert old in text
+    return text.replace(old, replacement, 1)
+
+if __name__ == '__main__':
+    backup = ROOT / 'dist' / 'before-local-port-20260927.zip'
+    if backup.exists():
+        raise SystemExit('One-time migration already applied; refusing to overwrite backup')
+    backup.parent.mkdir(exist_ok=True)
+    with zipfile.ZipFile(backup, 'x', zipfile.ZIP_DEFLATED) as archive:
+        for path in TARGET.rglob('*'):
+            if path.is_file() and not {'data', '__pycache__'}.intersection(path.relative_to(TARGET).parts):
+                archive.write(path, path.relative_to(ROOT))
+    fingerprints = {str(p.relative_to(SOURCE)): hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in SOURCE.rglob('*') if p.is_file() and
+                    not {'.venv', 'data', '__pycache__', 'node_modules', '.git'}.intersection(p.relative_to(SOURCE).parts)}
+    write(ROOT / 'docs' / 'pico-source-sha256-20260927.json', json.dumps(fingerprints, indent=2, ensure_ascii=False))
+    old = read(TARGET / 'redscope/web.py')
+    new = read(SOURCE / 'pico4824a/web.py')
+    # Retain board capture, alternating sweep, storage, and path-aware run preview.
+    old_methods = methods(old, 'WebControlState')
+    for name in ('start_capture', 'start_sweep', '_capture_worker', '_sweep_worker', 'save', 'sweep_run_payload'):
+        new = replace_method(new, 'WebControlState', name, old_methods[name])
+    new = new.replace('import json\n', 'import json\nimport os\n', 1)
+    new = new.replace('from . import interference', 'from . import interference\nfrom .hardware_config import defaults, validate_hardware')
+    new = new.replace('INTERFERENCE_DIR = PROJECT_DIR.parent / "Pico_4824A_error"',
+                      'INTERFERENCE_DIR = WEB_DIR / "interference"\nDATA_DIR = Path(os.environ.get("HANNSCOPE_DATA", str(PROJECT_DIR / "data"))).resolve()')
+    new = new.replace('PROJECT_DIR / "data"', 'DATA_DIR')
+    # Repair the declaration after replacing default output roots.
+    new = new.replace('str(DATA_DIR))).resolve()', 'str(PROJECT_DIR / "data"))).resolve()')
+    new = new.replace('self.interference_output_root = interference_output_root or interference.ROOT',
+                      'self.interference_output_root = interference_output_root or DATA_DIR / "interference"\n        self.capture_files = []\n        self.captures = []')
+    new = new.replace('"has_sweep_result": self.sweep_result is not None,',
+                      '"has_sweep_result": self.sweep_result is not None,\n                "capture_files": self.capture_files,\n                "capture_excitations": [(c.config.redpitaya or {}).get("excitation_id", "legacy") for c in self.captures],')
+    new = new.replace('if self.status.state == "running":', 'if self.status.state in {"running", "paused"}:')
+    new = replace_method(new, 'WebControlState', '_device_for_task',
+                         '    def _device_for_task(self, simulate: bool):\n        return Pico4824A(simulate=simulate), True\n')
+    new = new.replace('self._send_json(AcquisitionConfig().to_dict())', 'self._send_json(defaults().to_dict())')
+    new = new.replace('"display_step": step,', '"display_step": step,\n                "excitation_id": (result.config.redpitaya or {}).get("excitation_id", "legacy"),\n                "available_excitations": [(c.config.redpitaya or {}).get("excitation_id", "legacy") for c in self.captures],', 1)
+    new = replace_method(new, 'PicoWebHandler', 'log_message', methods(old, 'PicoWebHandler')['log_message'])
+    # Server startup/lifecycle is owned by server.py, never the Pico USB launcher.
+    new = new[:new.index('\ndef serve(')] + '\n'
+    write(TARGET / 'redscope/web.py', new)
+    for name in ('lcr', 'big_signal_lcr', 'big_signal_linearity', 'lcr_linearity', 'interference', 'waveforms'):
+        write(TARGET / f'redscope/{name}.py', read(SOURCE / f'pico4824a/{name}.py'))
+    cfg = read(SOURCE / 'pico4824a/config.py')
+    cfg = cfg.replace('capture_timeout_s: float = 10.0', 'capture_timeout_s: float = 10.0\n    redpitaya: dict[str, Any] | None = None')
+    cfg = cfg.replace('max_rate = 40_000_000.0 if len(self.enabled_channels) >= 5 else 80_000_000.0',
+                      'max_rate = 125_000_000.0 if self.redpitaya else (40_000_000.0 if len(self.enabled_channels) >= 5 else 80_000_000.0)')
+    cfg = cfg.replace('        self.trigger.validate(self.channels)', '        if not self.redpitaya or self.redpitaya.get("trigger_source") == "analog":\n            self.trigger.validate(self.channels)')
+    cfg = cfg.replace('capture_timeout_s=raw.get("capture_timeout_s", 10.0),', 'capture_timeout_s=raw.get("capture_timeout_s", 10.0),\n            redpitaya=raw.get("redpitaya"),')
+    write(TARGET / 'redscope/config.py', cfg)
+    oldjs = read(TARGET / 'web/app.js')
+    js = read(SOURCE / 'web/app.js')
+    # Keep asynchronous board analysis jobs supported by the new UI.
+    start = oldjs.index('async function api(')
+    end = oldjs.index('\nfunction ', start)
+    ns = js.index('async function api(')
+    ne = js.index('\nfunction ', ns)
+    js = js[:ns] + oldjs[start:end] + js[ne:]
+    js = js.replace('pico4824a-settings', 'hann-scope-settings-v3')
+    write(TARGET / 'web/app.js', js)
+    html = read(SOURCE / 'web/index.html').replace('PicoScope 4824A', 'Hann Burst Scope · Red Pitaya')
+    html = html.replace('</head>', '<link rel="icon" href="/favicon.png" /><link rel="stylesheet" href="/board.css" />\n  </head>')
+    html = html.replace('<div class="connection">', '<a id="rpHome" class="rp-home" href="/#" target="_top">⌂ 返回主界面</a>\n      <div class="connection">', 1)
+    html = html.replace('</body>', '<script src="/icons.js"></script><script src="/board.js"></script><script src="/port.js"></script>\n  </body>')
+    html = html.replace('id="sampleRate" type="number" value="20"', 'id="sampleRate" type="number" value="5"')
+    html = html.replace('id="awgVpp" type="number" value="2"', 'id="awgVpp" type="number" value="0.1"')
+    html = html.replace('value="F:', 'value="F:') # Paths are initialized by capabilities on load.
+    write(TARGET / 'web/index.html', html)
+    write(TARGET / 'web/styles.css', read(SOURCE / 'web/styles.css'))
+    for path in (ROOT.parent / 'Pico_4824A_error').iterdir():
+        if path.suffix in ('.js', '.html', '.css'):
+            write(TARGET / 'web/interference' / path.name, read(path))
+    # Pure algorithm tests are copied, never executed in the read-only source tree.
+    for name in ('lcr', 'lcr_linearity', 'big_signal_linearity', 'interference', 'waveforms'):
+        text = read(SOURCE / f'tests/test_{name}.py').replace('pico4824a', 'redscope')
+        write(ROOT / f'tests/test_upstream_{name}.py', text)
