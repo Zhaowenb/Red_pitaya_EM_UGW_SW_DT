@@ -1,6 +1,6 @@
 """One fixed bias, all amplitudes: shared deadline and OFF before waveform I/O."""
 import tempfile
-import time
+import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -53,8 +53,22 @@ class ContinuousBiasTests(unittest.TestCase):
 
     def test_amplitude_change_does_not_reset_deadline_and_partial_data_is_saved(self):
         class Slow(Adapter):
+            def __init__(self, power):
+                super().__init__(power)
+                self.deadline_stop=threading.Event()
+                self.remaining=[]
+
+            def stop(self):
+                self.deadline_stop.set()
+
             def capture(self, acq, remaining):
-                time.sleep(.02)
+                self.remaining.append(remaining)
+                # Five fast captures reach the second amplitude. Then keep
+                # capture blocked until the independent watchdog stops it.
+                # Fixed 20 ms sleeps race the OS scheduler and may save all
+                # ten records (including the interrupted final record).
+                if acq.awg.pk_to_pk_v == 1 and not self.deadline_stop.wait(1):
+                    raise RuntimeError('deadline watchdog did not stop capture')
                 return super().capture(acq, remaining)
         acquisition, config=self.config(max_on_s=.2,stable_timeout_s=.05)
         job, result=self.run_job(config,acquisition,Slow)
@@ -64,6 +78,8 @@ class ContinuousBiasTests(unittest.TestCase):
         self.assertEqual(result['output_state'],'off')
         self.assertGreater(len(result['runs']),0)
         self.assertLess(len(result['runs']),10)
+        self.assertIn(1,[row['awg_vpp'] for row in result['runs']])
+        self.assertTrue(all(later <= earlier for earlier,later in zip(job.adapter.remaining,job.adapter.remaining[1:])))
         self.assertTrue(all(not s['eligible'] for s in result['summary'] if s['awg_vpp']==1))
 
     def test_guarded_retry_does_not_rearm_power(self):
