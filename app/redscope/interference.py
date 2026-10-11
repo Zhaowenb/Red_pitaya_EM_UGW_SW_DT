@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import csv
 import json
-import os
 from pathlib import Path
 import re
 import threading
@@ -15,9 +14,10 @@ import numpy as np
 
 from .config import AcquisitionConfig
 from .storage import load_npz, save_npz
+from .storage_naming import session_directory, readable_source
 
 
-ROOT = Path(os.environ.get('HANNSCOPE_DATA', str(Path(__file__).resolve().parent.parent / 'data'))) / 'interference'
+ROOT = Path(__file__).resolve().parent.parent / "data" / "interference"
 _LOCK = threading.RLock()
 _ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -25,10 +25,28 @@ _ID = re.compile(r"^[0-9a-f]{32}$")
 def _folder(session_id: str, root: Path = ROOT) -> Path:
     if not _ID.fullmatch(session_id):
         raise ValueError("invalid session id")
-    return root / session_id
+    legacy = root / session_id
+    if legacy.exists():
+        return legacy
+    for path in root.glob('*/session.json'):
+        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+            continue
+        try:
+            if json.loads(path.read_text(encoding='utf-8')).get('id') == session_id:
+                return path.parent
+        except (ValueError, OSError):
+            continue
+    if root.resolve() == ROOT.resolve():
+        from .data_access import LEGACY_INTERFERENCE, import_directory
+        historical = LEGACY_INTERFERENCE / session_id
+        if historical.is_dir():
+            return import_directory(historical, root)
+    return legacy
 
 
 def _write_json(path: Path, value: dict) -> None:
+    from .storage_naming import output_path
+    path = output_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
@@ -49,7 +67,10 @@ def create_session(payload: dict, root: Path = ROOT) -> dict:
         "channels": payload["channels"], "windows_us": payload["windows_us"],
         "runs": [], "completed_experiments": [],
     }
-    _write_json(_folder(session_id, root) / "session.json", session)
+    folder = session_directory(root, 'interference')
+    session['name'] = folder.name
+    session['output_dir'] = str(folder)
+    _write_json(folder / "session.json", session)
     return session
 
 
@@ -372,14 +393,16 @@ def save_run(session_id: str, capture_id: int, capture, condition: dict, root: P
             if metrics[region]:
                 for field in ("fft_hz","fft_amplitude_v","fft_phase_rad"):
                     spectra[f"{region}_{field}"]=np.asarray(metrics[region].pop(field))
-        np.savez_compressed(folder/f"{run_id}_fft.npz",**spectra)
-        path=folder/f"{run_id}.npz"
+        repeat = 1 + sum(r['experiment']==experiment and r['condition']==name for r in session['runs'])
+        stem = f"实验{experiment:02d}__{readable_source(name)}__重复{repeat:02d}__记录{len(session['runs'])+1:03d}"
+        np.savez_compressed(folder/f"{stem}__FFT.npz",**spectra)
+        path=folder/f"{stem}__原始波形.npz"
         save_npz(capture,path)
         run={"id":run_id,"capture_id":capture_id,"timestamp":datetime.now(timezone.utc).isoformat(),
              "experiment":experiment,"condition":str(condition["condition"]),
              "variables":dict(condition.get("variables",{})),"notes":str(condition.get("notes","")),
-             "windows_us":settings["windows_us"],"raw_file":f"runs/{run_id}.npz",
-             "fft_file":f"runs/{run_id}_fft.npz","metrics":metrics}
+             "windows_us":settings["windows_us"],"raw_file":f"runs/{stem}__原始波形.npz",
+             "fft_file":f"runs/{stem}__FFT.npz","metrics":metrics}
         session["runs"].append(run)
         _write_json(_folder(session_id,root)/"session.json",session)
         return {"run":run,"summary":summarize(session)}

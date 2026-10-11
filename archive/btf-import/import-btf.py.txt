@@ -1,0 +1,108 @@
+"""Auditable one-time mechanical import. Never writes to the Pico reference.
+
+Run from this checkout with --source ../Pico_4824A_btf. The merge retains the
+Red Pitaya hardware orchestration, transport budgets and phase implementation.
+"""
+import argparse
+import ast
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('--source', type=Path, required=True)
+args = parser.parse_args()
+SOURCE = args.source.resolve()
+assert SOURCE != ROOT and (SOURCE/'pico4824a/bias_scan').is_dir()
+
+
+def base(name):
+    return subprocess.check_output(['git', 'show', f'HEAD:app/redscope/{name}'], cwd=ROOT).decode('utf-8')
+
+
+def source(name):
+    return (SOURCE/'pico4824a'/name).read_text(encoding='utf-8')
+
+
+def node_text(code, name, parent=None):
+    tree = ast.parse(code)
+    nodes = tree.body if parent is None else next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == parent).body
+    node = next(n for n in nodes if getattr(n, 'name', '') == name)
+    return ''.join(code.splitlines(keepends=True)[node.lineno-1:node.end_lineno])
+
+
+def replace_node(code, name, replacement, parent=None):
+    return code.replace(node_text(code, name, parent), replacement, 1)
+
+
+def write(name, code):
+    (ROOT/'app/redscope'/name).write_text(code, encoding='utf-8', newline='\n')
+
+
+manifest = {}
+for folder in ['pico4824a', 'web', 'tests']:
+    for path in sorted((SOURCE/folder).rglob('*')):
+        if path.is_file() and '__pycache__' not in path.parts:
+            manifest[path.relative_to(SOURCE).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+(ROOT/'docs/btf-source-manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
+shutil.copytree(SOURCE/'web', ROOT/'app/web', dirs_exist_ok=True)
+for name in ['storage_naming.py', 'data_sessions.py', 'data_access.py', 'file_browser.py']:
+    shutil.copy2(SOURCE/'pico4824a'/name, ROOT/'app/redscope'/name)
+shutil.copytree(SOURCE/'pico4824a/bias_scan', ROOT/'app/redscope/bias_scan', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
+
+# Scientific changes in this source revision are naming/export changes only.
+# Keep Red Pitaya overflow checks, calibration identity and excitation grouping.
+for name in ['lcr.py', 'big_signal_lcr.py', 'lcr_linearity.py', 'big_signal_linearity.py', 'interference.py']:
+    code = source(name)
+    if name == 'lcr.py':
+        for method in ['_calibration_signature', 'analyze_impedance']:
+            code = replace_node(code, method, node_text(base(name), method))
+        code = code.replace('"source_directory": str(source_directory.resolve()),', '"source_directory": str(source_directory.resolve()),\n        "simulated": bool(rows) and all(row.get("simulated", False) for row in rows),')
+        code = code.replace('"run_index": run_index,', '"run_index": run_index,\n                "simulated": capture.simulated,')
+    if name == 'big_signal_lcr.py':
+        code = code.replace('"run_index": run_index, "repeat": repeat,', '"run_index": run_index, "simulated": capture.simulated, "repeat": repeat,')
+    write(name, code)
+code = replace_node(base('analysis.py'), 'export_filtered', node_text(source('analysis.py'), 'export_filtered'))
+write('analysis.py', code)
+code = base('sweep.py')
+code = code.replace('from .storage import', 'from .storage_naming import session_directory\nfrom .storage import', 1)
+start = code.index('    stamp = datetime.now().strftime(')
+end = code.index('    raw_dir =', start)
+code = code[:start] + '    directory = session_directory(output_root, "sweep", simulated=getattr(device, "simulate", False))\n' + code[end:]
+write('sweep.py', code)
+
+code = base('web.py')
+code = code.replace('from urllib.parse import parse_qs, urlparse', 'from urllib.parse import parse_qs, urlparse, quote')
+code = code.replace('class WebControlState:', 'class WebControlState(BiasScanWebMixin):')
+code = code.replace('from .hardware_config import defaults, validate_hardware', 'from .storage_naming import capture_stem, preferences, save_preferences\nfrom .file_browser import list_directory\nfrom .bias_scan.web_extension import BiasScanWebMixin\nfrom .hardware_config import defaults, validate_hardware')
+code = code.replace('        self._lock = threading.RLock()', '        self._lock = threading.RLock()\n        self.init_bias_scan(PROJECT_DIR)\n        self.bias_output_root = DATA_DIR / "bias_scans"', 1)
+code = code.replace('"has_result": self.result is not None,', '"has_result": self.result is not None,\n                "has_bias_result": self.bias_result is not None or self.bias_controller is not None,\n                "bias_output_unknown": self.bias_unknown,\n                "bias_cleanup_pending": self.bias_cleanup_pending,\n                "bias_power_state": self.bias_power.output_state if self.bias_power else "unconnected",')
+code = code.replace('if self.status.state in {"running", "paused"}:', 'if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:')
+for method in ['stop', 'shutdown', 'save']:
+    code = replace_node(code, method, node_text(source('web.py'), method, 'WebControlState'), 'WebControlState')
+code = code.replace('capture_stem(result)', 'capture_stem(result, DATA_DIR / "captures")')
+code = code.replace("str(save_npz(item, DATA_DIR / (default_stem() + '_' + item.config.redpitaya['excitation_id'].replace('+','-') + '.npz')))", "str(save_npz(item, capture_stem(item, DATA_DIR / 'captures').with_suffix('.npz')))")
+# Retain RP orchestration; use upstream handlers for modular assets/new APIs.
+code = replace_node(code, 'PicoWebHandler', node_text(source('web.py'), 'PicoWebHandler'))
+snapshot = node_text(source('web.py'), 'snapshot_web_assets')
+snapshot = snapshot.replace("{'.html', '.css', '.js'}", "{'.html', '.css', '.js', '.svg', '.png', '.ico'}")
+code = code.replace('@dataclass(slots=True)', snapshot + '\n\n\n@dataclass(slots=True)', 1)
+code = code.replace('self._send_json(AcquisitionConfig().to_dict())', 'self._send_json(defaults().to_dict())')
+code = code.replace("(PROJECT_DIR / 'data').resolve()", 'DATA_DIR.resolve()')
+code = code.replace('list_directory(str(payload.get("path", "")), PROJECT_DIR)', 'list_directory(str(payload.get("path", "")), DATA_DIR)')
+code = code.replace('elif path == "/api/interference/session":\n                self._send_json', 'elif path == "/api/interference/session":\n                raise ValueError(THREE_CHANNEL_LIMIT)\n                self._send_json')
+code = code.replace('server_version = "Pico4824AWeb/0.1"', 'server_version = "RedPitayaBTF/1.0"')
+code = code.replace('if path in {"/views/magnetic', 'if path in {"/btf.js", "/views/magnetic')
+code = code.replace('elif path == "/styles.css":', 'elif path == "/btf.css":\n                self._send_asset("btf.css", "text/css; charset=utf-8")\n            elif path == "/styles.css":')
+write('web.py', code)
+
+# Import regression specifications as independent tests, with package-name only
+# adaptation. Hardware-facing tests are kept separate from upstream pure maths.
+for pattern in ['test_bias*.py', 'test_storage_naming.py', 'test_data_sessions.py']:
+    for path in (SOURCE/'tests').glob(pattern):
+        target = ROOT/'tests'/('btf_' + path.name)
+        target.write_text(path.read_text(encoding='utf-8').replace('pico4824a', 'redscope'), encoding='utf-8')
+print(f'Imported {len(manifest)} source fingerprints; Pico source remains read-only.')

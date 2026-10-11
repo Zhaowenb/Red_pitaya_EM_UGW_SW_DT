@@ -1,6 +1,6 @@
 {
-    "name": "Hann Burst Scope",
-    "version": "2.0.0",
-    "revision": "local",
-    "description": "Dual-output acquisition, parameter sweeps, FFT/STFT/WPD/CWT and archive analysis"
+    "name": "Hann Burst Scope BTF",
+    "version": "3.0.0-btf",
+    "revision": "btf",
+    "description": "WaveGuard BTF: dual-output acquisition, bias scans, scientific analysis and named archives"
 }

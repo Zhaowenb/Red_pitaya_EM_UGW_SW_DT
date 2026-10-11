@@ -22,6 +22,13 @@ for(const id of ['lcrVoltageRange','lcrCurrentRange','bigLcrVoltageRange','bigLc
 for(const id of ['lcrSampleRate','bigLcrSampleRate']) {
   rpElement(id).max='125';
 }
+const rpSyncChannels=syncAcquisitionChannelState;
+syncAcquisitionChannelState=function(){rpSyncChannels();$('sampleRate').max='125';$('sampleRate').title='125 MHz / 合法抽取系数；输入数量不改变采样率';};
+if(!localStorage.getItem('redpitaya-btf-settings')) {
+ $('sampleRate').value='5';
+ for(const id of ['lcrSampleRate','bigLcrSampleRate'])rpElement(id).value='5';
+ $('awgFrequency').value='73.7';$('awgVpp').value='0.1';$('awgCycles').value='7';
+}
 $('sampleRate').max='125';
 $('awgBufferSamples').value='16384'; $('awgBufferSamples').disabled=true;
 rpElement('bigLcrAutoRange').checked=false; rpElement('bigLcrAutoRange').disabled=true;

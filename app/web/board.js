@@ -1,6 +1,6 @@
-/* Hardware-specific controls around the unchanged Pico analysis workflow. */
+/* Hardware-specific controls around the ported BTF analysis workflow. */
 const boardDefaults={mode:'alternating',trigger_source:'internal',load:'Hi-Z',phase1_deg:0,phase2_deg:0,roles:{A:'receiver',B:'receiver'},output2:{}};
-let boardSettings; try {boardSettings={...boardDefaults,...JSON.parse(localStorage.getItem('hann-scope-board')||'{}')};} catch {boardSettings=boardDefaults;}
+let boardSettings; try {boardSettings={...boardDefaults,...JSON.parse(localStorage.getItem('hann-scope-btf-board')||'{}')};} catch {boardSettings=boardDefaults;}
 const boardSection=document.createElement('div'); boardSection.className='rp-board-settings';
 boardSection.innerHTML=`<div class="subhead"><span>板端接线与激励</span><small>A=IN1 · B=IN2</small></div><div class="form-grid">
 <label>激励方式<select id="rpMode"><option value="alternating">OUT1 / OUT2 轮流</option><option value="simultaneous">OUT1 + OUT2 同步</option><option value="out1">仅 OUT1</option><option value="out2">仅 OUT2</option></select></label>
@@ -17,10 +17,18 @@ $('inputRange').innerHTML='<option>1V</option><option>20V</option>';
 $('waveform').add(new Option('自定义 CSV','custom'));
 $('awgBufferSamples').value='16384';
 for(const option of [...$('triggerSource').options]) if(!'AB'.includes(option.value)) option.remove();
-$('rpHome').href=`${location.protocol}//${location.hostname}/#`;
+const homeLink=document.createElement('a');homeLink.id='rpHome';homeLink.className='rp-home';homeLink.textContent='Red Pitaya 首页';homeLink.title='返回 Red Pitaya 主菜单';
+homeLink.href=`${location.protocol}//${location.hostname}/#`;
+homeLink.target='_top';
+document.querySelector('.wg-header').append(homeLink);
 const toolbar=document.createElement('div'); toolbar.className='rp-tools';
 toolbar.innerHTML=`<label>${rpIcon('upload')}导入文件 / 扫描 ZIP<input id="rpUpload" type="file" accept=".npz,.csv,.json,.zip"></label><input id="rpFilePath" aria-label="板端文件路径" placeholder="板端路径"><button id="rpDownload">${rpIcon('download')}下载文件 / 归档</button><button id="rpBrowse">${rpIcon('archive')}浏览数据</button><button id="rpCancelAnalysis">${rpIcon('stop')}取消分析</button><small id="rpJobStatus"></small><span class="rp-telemetry" id="rpSystem">正在读取板端状态…</span><label>当前发射<select id="rpExcitation"><option value="OUT1">OUT1</option><option value="OUT2">OUT2</option><option value="OUT1+OUT2">同步</option><option value="legacy">历史数据</option></select></label>`;
-document.querySelector('.topbar').after(toolbar);
+toolbar.id='rpTools';toolbar.hidden=true;
+document.body.append(toolbar);
+const toolsButton=document.createElement('button');toolsButton.type='button';toolsButton.className='wg-icon-button';toolsButton.innerHTML=rpIcon('archive');toolsButton.title='文件、系统与任务';toolsButton.setAttribute('aria-label','文件、系统与任务');
+document.querySelector('.wg-header').append(toolsButton);
+const toolsPanel=WaveGuardUI.panelController({panel:toolbar,trigger:toolsButton});
+toolsButton.onclick=()=>toolsPanel.set(!toolsPanel.isOpen());
 $('rpMode').value=boardSettings.mode; $('rpLoad').value=boardSettings.load; $('rpTrigger').value=boardSettings.trigger_source;
 $('rpPhase1').value=boardSettings.phase1_deg; $('rpPhase2').value=boardSettings.phase2_deg;
 $('rpOutput2').value=JSON.stringify(boardSettings.output2,null,2);
@@ -58,7 +66,7 @@ buildPayload=function(){
   phase1_deg:Number($('rpPhase1').value),phase2_deg:Number($('rpPhase2').value),roles:{A:$('rpRoleA').value,B:$('rpRoleB').value},output2};
  payload.trigger.direction=$('rpDirection').value;
  payload.capture_timeout_s=Math.max(.1,Number($('triggerTimeout').value)/1000)+Number($('captureDurationUs').value)/1e6;
- localStorage.setItem('hann-scope-board',JSON.stringify(payload.redpitaya)); return payload;
+ localStorage.setItem('hann-scope-btf-board',JSON.stringify(payload.redpitaya)); return payload;
 };
 boardSection.addEventListener('change',()=>{enforceRoles();syncHardwareControls();scheduleAwgPreview();try{buildPayload();}catch(error){setEvent(error.message,'error');}});
 $('triggerEnabled').addEventListener('change',syncHardwareControls);
@@ -81,7 +89,7 @@ $('rpUpload').onchange=async event=>{try{
 }catch(error){setEvent(error.message,'error');}};
 $('rpUpload').multiple=true;
 $('rpDownload').onclick=()=>{const path=$('rpFilePath').value.trim();if(path)location.href='/api/download?path='+encodeURIComponent(path);else setEvent('请选择或上传文件，或填写板端归档路径','error');};
-$('rpBrowse').onclick=()=>{showPage('file-analysis',true); $('analysisPath').value=window.rpDataRoot||'data';};
+$('rpBrowse').onclick=()=>{showPage('file-analysis',true); $('analysisPath').value=window.rpDataRoot||'';if(window.WaveGuardFiles)WaveGuardFiles.open($('analysisPath'),'file');};
 $('rpCancelAnalysis').onclick=()=>api('/api/jobs/cancel',{method:'POST',body:'{}'}).catch(error=>setEvent(error.message,'error'));
 const originalApi=api;
 // Board HTTP is not a secure context; randomUUID is not available there.
@@ -124,7 +132,12 @@ async function refreshBoard(){try{
  const state=await api('/api/system'); $('rpSystem').textContent=`${state.hardware_connected?'硬件已连接':'硬件未连接'} · ${fmt(state.temperature_c,'°C')} · 1 min负载 ${fmt(state.cpu_load_1m)} · 内存 ${fmt(state.memory_used_percent,'%')} · 磁盘 ${fmt(state.storage_used_percent,'%')}`;
  $('rpJobStatus').textContent=window.activeAnalysisJob?'分析计算中…':'';
 }catch{$('rpSystem').textContent='板端服务断开';}}
-api('/api/capabilities').then(result=>{window.rpDataRoot=result.data_root;if($('analysisPath').value.includes('F:'))$('analysisPath').value=result.data_root;if($('archivePath').value.includes('F:'))$('archivePath').value=result.data_root+'/sweeps';}).catch(error=>setEvent(error.message,'error'));
+api('/api/capabilities').then(result=>{
+ window.rpDataRoot=result.data_root;
+ const referencePath=value=>!value.trim()||/(^|[\\/])Pico_4824A(?:_btf)?([\\/]|$)/i.test(value);
+ if(referencePath($('analysisPath').value))$('analysisPath').value=result.data_root;
+ if(referencePath($('archivePath').value))$('archivePath').value=result.data_root+'/sweeps';
+}).catch(error=>setEvent(error.message,'error'));
 refreshBoard();setInterval(refreshBoard,3000);
 const emergencyStop=document.createElement('button');
 emergencyStop.innerHTML=rpIcon('stop')+'停止硬件任务';

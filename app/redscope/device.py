@@ -56,6 +56,21 @@ class RedPitaya:
         except (OSError, RuntimeError):
             pass
 
+    def disable_awg_output(self):
+        """Acquire calls turn DAC off in the hardware RAII guard.
+
+        Send OFF without latching Python cancellation: bias scans call this
+        between groups and must still be able to capture the next group.
+        A transport failure must propagate to the bias safety controller.
+        """
+        if self.simulate:
+            return
+        with self._socket(2) as connection:
+            connection.sendall(b'OFF\n')
+            reply = connection.recv(100)
+            if not reply.startswith(b'OK'):
+                raise RuntimeError('硬件服务未确认 DAC 关闭')
+
     def _socket(self, timeout):
         if not hasattr(socket, 'AF_UNIX'):
             raise RuntimeError('本机不支持板端 Unix socket；请启用仿真，实机服务须在 Red Pitaya 上运行')

@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, quote
 
 import numpy as np
 
@@ -59,6 +59,9 @@ from .sweep import SweepConfig, SweepOutcome, execute_sweep
 from .waveforms import normalized_waveform
 from .time_frequency import time_frequency_map
 from . import interference
+from .storage_naming import capture_stem, preferences, save_preferences
+from .file_browser import list_directory
+from .bias_scan.web_extension import BiasScanWebMixin
 from .hardware_config import defaults, validate_hardware
 from .measurement_adapter import validate_measurement, THREE_CHANNEL_LIMIT
 
@@ -67,6 +70,14 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_DIR / "web"
 INTERFERENCE_DIR = WEB_DIR / "interference"
 DATA_DIR = Path(os.environ.get("HANNSCOPE_DATA", str(PROJECT_DIR / "data"))).resolve()
+
+
+def snapshot_web_assets() -> dict[str, bytes]:
+    """Keep HTML/CSS/JS at one revision for this running backend."""
+    return {path.relative_to(WEB_DIR).as_posix(): path.read_bytes()
+            for path in WEB_DIR.rglob('*')
+            if path.is_file() and path.suffix in {'.html', '.css', '.js', '.svg', '.png', '.ico'}}
+
 
 
 @dataclass(slots=True)
@@ -80,7 +91,7 @@ class WebStatus:
     progress: dict[str, Any] | None = None
 
 
-class WebControlState:
+class WebControlState(BiasScanWebMixin):
     def __init__(
         self,
         sweep_output_root: Path | None = None,
@@ -90,6 +101,8 @@ class WebControlState:
         interference_output_root: Path | None = None,
     ) -> None:
         self._lock = threading.RLock()
+        self.init_bias_scan(PROJECT_DIR)
+        self.bias_output_root = DATA_DIR / "bias_scans"
         self.status = WebStatus()
         self.result: CaptureResult | None = None
         self.sweep_result: SweepOutcome | None = None
@@ -123,6 +136,10 @@ class WebControlState:
                 "progress": self.status.progress,
                 "trip_alarm": dict(self._trip_alarm) if self._trip_alarm else None,
                 "has_result": self.result is not None,
+                "has_bias_result": self.bias_result is not None or self.bias_controller is not None,
+                "bias_output_unknown": self.bias_unknown,
+                "bias_cleanup_pending": self.bias_cleanup_pending,
+                "bias_power_state": self.bias_power.output_state if self.bias_power else "unconnected",
                 "has_sweep_result": self.sweep_result is not None,
                 "capture_files": self.capture_files,
                 "capture_excitations": [(c.config.redpitaya or {}).get("excitation_id", "legacy") for c in self.captures],
@@ -137,7 +154,7 @@ class WebControlState:
         config = AcquisitionConfig.from_dict(values)
         validate_hardware(config)
         with self._lock:
-            if self.status.state in {"running", "paused"}:
+            if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:
                 raise RuntimeError("已有采集任务正在运行")
             self._stop_event.clear()
             self.status.capture_id += 1
@@ -148,12 +165,15 @@ class WebControlState:
             self.status.message = "正在配置设备并等待触发"
             self.status.started_at = time.time()
             self.status.finished_at = None
-        threading.Thread(
+        worker = threading.Thread(
             target=self._capture_worker,
             args=(capture_id, config, simulate),
             daemon=True,
-            name=f"pico-capture-{capture_id}",
-        ).start()
+            name=f"redpitaya-capture-{capture_id}",
+        )
+        with self._lock:
+            self._worker_thread = worker
+            worker.start()
         return capture_id
 
     def start_sweep(self, raw: dict[str, Any]) -> int:
@@ -176,7 +196,7 @@ class WebControlState:
         if len(points) * sweep.repeats * (2 if config.redpitaya['mode']=='alternating' else 1) > 10_000:
             raise ValueError("一次扫描最多允许 10,000 次采集")
         with self._lock:
-            if self.status.state in {"running", "paused"}:
+            if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:
                 raise RuntimeError("已有采集或扫描任务正在运行")
             self._stop_event.clear()
             self.status.capture_id += 1
@@ -196,12 +216,15 @@ class WebControlState:
                 "total_points": len(points),
             }
             self.sweep_result = None
-        threading.Thread(
+        worker = threading.Thread(
             target=self._sweep_worker,
             args=(task_id, config, sweep, simulate),
             daemon=True,
-            name=f"pico-sweep-{task_id}",
-        ).start()
+            name=f"redpitaya-sweep-{task_id}",
+        )
+        with self._lock:
+            self._worker_thread = worker
+            worker.start()
         return task_id
 
     def start_lcr(self, raw: dict[str, Any]) -> int:
@@ -232,7 +255,7 @@ class WebControlState:
             if bool(profile.get('simulated',False)) != simulate:
                 raise ValueError('仿真校准与实机测量不能混用，请在当前模式重新校准')
         with self._lock:
-            if self.status.state in {"running", "paused"}:
+            if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:
                 raise RuntimeError("已有仪器任务正在运行")
             self._stop_event.clear()
             self._resume_event.set()
@@ -288,7 +311,7 @@ class WebControlState:
         total_points = len(big_lcr.parameter_points)
         total_runs = total_points * big_lcr.repeats
         with self._lock:
-            if self.status.state in {"running", "paused"}:
+            if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:
                 raise RuntimeError("已有仪器任务正在运行")
             self._stop_event.clear()
             self._resume_event.set()
@@ -418,7 +441,10 @@ class WebControlState:
             with device:
                 result = device.capture(config)
                 self.captures = list(device.last_captures)
-                self.capture_files = [str(save_npz(item, DATA_DIR / (default_stem() + '_' + item.config.redpitaya['excitation_id'].replace('+','-') + '.npz'))) for item in self.captures]
+                self.capture_files = []
+                for item in self.captures:
+                    stem = capture_stem(item, DATA_DIR / 'captures')
+                    self.capture_files.append(str(save_npz(item, stem.parent / (stem.name + '.npz'))))
             overflow = (
                 "；输入溢出：" + ",".join(result.overflow_channels)
                 if result.overflow_channels
@@ -722,7 +748,7 @@ class WebControlState:
                 if self.status.capture_id != task_id or self._stop_event.is_set():
                     self._trip_alarm = None
                     return False
-                if self.status.state in {"running", "paused"}:
+                if self.status.state in {"running", "paused"} or self.bias_unknown or self.bias_cleanup_pending:
                     return True
 
     def resolve_trip(self) -> None:
@@ -752,6 +778,8 @@ class WebControlState:
                 "big_lcr": "正在停止大信号 LCR 测量",
                 "lcr_linearity": "正在停止大信号线性度测试",
             }.get(self.status.task_kind, "正在停止采集")
+        if self.status.task_kind == "bias_scan" and self.bias_controller is not None:
+            self.bias_controller.stop()
         if device is not None and not was_paused:
             device.stop()
 
@@ -764,6 +792,9 @@ class WebControlState:
             active = self.device
             worker = self._worker_thread
             hardware = self._hardware_device
+        bias_error = None
+        try:self.bias_shutdown()
+        except Exception as exc:bias_error = exc
         if active is not None:
             try:
                 active.stop()
@@ -784,6 +815,8 @@ class WebControlState:
                         self._hardware_device = None
                     if self.device is hardware:
                         self.device = None
+
+        if bias_error is not None:raise bias_error
 
     def result_payload(
         self,
@@ -838,15 +871,21 @@ class WebControlState:
         }
 
     def save(self, kind: str) -> Path:
+        if kind not in {'npz', 'csv'}:
+            raise ValueError('保存格式必须是 npz 或 csv')
         with self._lock:
             result = self.result
         if result is None:
             raise RuntimeError("尚无可保存的采集结果")
-        stem = DATA_DIR / default_stem()
+        with self._lock:
+            if getattr(self, "_saved_capture_result", None) is not result:
+                self._saved_capture_stem = capture_stem(result, DATA_DIR / "captures")
+                self._saved_capture_result = result
+            stem = self._saved_capture_stem
         if kind == "npz":
-            return save_npz(result, stem.with_suffix(".npz"))
+            return save_npz(result, stem.parent / (stem.name + ".npz"))
         if kind == "csv":
-            return save_csv(result, stem.with_suffix(".csv"))
+            return save_csv(result, stem.parent / (stem.name + ".csv"))
         raise ValueError("保存格式必须是 npz 或 csv")
 
     def sweep_result_payload(self) -> dict[str, Any]:
@@ -1027,15 +1066,13 @@ def awg_preview_payload(raw: dict[str, Any], max_points: int = 2400) -> dict[str
 
 
 class PicoWebHandler(BaseHTTPRequestHandler):
-    server_version = "Pico4824AWeb/0.1"
+    server_version = "RedPitayaBTF/1.0"
 
     @property
     def control(self) -> WebControlState:
         return self.server.control  # type: ignore[attr-defined]
 
     def log_message(self, fmt: str, *args: object) -> None:
-        if urlparse(self.path).path in {"/api/status", "/api/system", "/api/heartbeat"}:
-            return
         print(f"[web] {self.address_string()} - {fmt % args}")
 
     def handle(self) -> None:
@@ -1065,8 +1102,11 @@ class PicoWebHandler(BaseHTTPRequestHandler):
         return raw
 
     def _send_asset(self, name: str, content_type: str) -> None:
-        path = WEB_DIR / name
-        body = path.read_bytes()
+        assets = getattr(self.server, 'web_assets', None)
+        if assets is None:
+            # Also support embedded/test servers that do not call serve().
+            assets = self.server.web_assets = snapshot_web_assets()
+        body = assets[name]
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -1075,19 +1115,23 @@ class PicoWebHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_interference_asset(self, name: str, content_type: str) -> None:
-        body = (INTERFERENCE_DIR / name).read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_asset('interference/' + name, content_type)
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
         parsed = urlparse(self.path)
         path = parsed.path
         try:
-            if path in {"/interference", "/interference/"}:
+            if path in {"/btf.js", "/views/magnetic-diagnosis.js", "/ui/workstation.js", "/ui/analysis-state.js", "/analysis/time-frequency.js", "/analysis/experimental.js", "/ui/storage-naming.js", "/ui/file-picker.js", "/views/signal-analysis.js", "/views/instruments.js", "/views/experiment.js", "/views/bias-scan.js"}:
+                self._send_asset(path.lstrip("/"), "text/javascript; charset=utf-8")
+            elif path in {"/magnetic-diagnosis", "/magnetic-diagnosis/"}:
+                self._send_asset("magnetic-diagnosis.html", "text/html; charset=utf-8")
+            elif path == "/views/magnetic-diagnosis.css":
+                self._send_asset("views/magnetic-diagnosis.css", "text/css; charset=utf-8")
+            elif path == "/views/bias-scan.css":
+                self._send_asset("views/bias-scan.css", "text/css; charset=utf-8")
+            elif path == "/ui/workstation.css":
+                self._send_asset("ui/workstation.css", "text/css; charset=utf-8")
+            elif path in {"/interference", "/interference/"}:
                 self._send_interference_asset("index.html", "text/html; charset=utf-8")
             elif path in {"/interference/manual", "/interference/manual.html"}:
                 self._send_interference_asset("manual.html", "text/html; charset=utf-8")
@@ -1099,8 +1143,6 @@ class PicoWebHandler(BaseHTTPRequestHandler):
                 self._send_interference_asset("manual.js", "text/javascript; charset=utf-8")
             elif path == "/interference/styles.css":
                 self._send_interference_asset("styles.css", "text/css; charset=utf-8")
-            elif path == "/interference/board.js":
-                self._send_interference_asset("board.js", "text/javascript; charset=utf-8")
             elif path == "/interference/manual.css":
                 self._send_interference_asset("manual.css", "text/css; charset=utf-8")
             elif path == "/api/interference/session":
@@ -1115,13 +1157,15 @@ class PicoWebHandler(BaseHTTPRequestHandler):
                 body = interference.export_csv(session_id, self.control.interference_output_root).read_bytes()
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self.send_header("Content-Disposition", f'attachment; filename="interference_{session_id}.csv"')
+                session_name=interference.load_session(session_id,self.control.interference_output_root).get('name','干扰实验')
+                self.send_header("Content-Disposition", "attachment; filename=interference.csv; filename*=UTF-8''"+quote(session_name+'__逐次统计.csv'))
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
             elif path in {
                 "/",
                 "/measure",
+                "/bias-scan",
                 "/sweep",
                 "/analysis",
                 "/file-analysis",
@@ -1132,8 +1176,63 @@ class PicoWebHandler(BaseHTTPRequestHandler):
                 self._send_asset("index.html", "text/html; charset=utf-8")
             elif path == "/app.js":
                 self._send_asset("app.js", "text/javascript; charset=utf-8")
+            elif path == "/btf.css":
+                self._send_asset("btf.css", "text/css; charset=utf-8")
             elif path == "/styles.css":
                 self._send_asset("styles.css", "text/css; charset=utf-8")
+            elif path == "/api/bias-scan/limits":
+                from .bias_scan.limits import MAX_CURRENT_A, LOAD_REFERENCE_RESISTANCE_OHM, SUPPLY_MAX_POWER_W
+                self._send_json({"max_current_a":MAX_CURRENT_A,
+                    "reference_resistance_ohm":LOAD_REFERENCE_RESISTANCE_OHM,
+                    "supply_max_power_w":SUPPLY_MAX_POWER_W})
+            elif path == "/api/bias-scan/resources":
+                from .bias_scan import IT6524DController
+                self._send_json({"resources":self.control.bias_resources()})
+            elif path == "/api/bias-scan/result":
+                self._send_json(self.control.bias_result_payload())
+            elif path == "/api/bias-scan/preview":
+                query=parse_qs(parsed.query)
+                self._send_json(self.control.bias_preview(int(query.get("point",["0"])[0]),int(query.get("repeat",["1"])[0])))
+            elif path == "/api/bias-scan/export":
+                name=parse_qs(parsed.query).get("name",["summary.csv"])[0]
+                if name == 'all.zip':
+                    archive=self.control.bias_archive()
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header('Content-Type','application/zip')
+                    self.send_header('Content-Disposition', "attachment; filename=bias-scan.zip; filename*=UTF-8''"+quote(archive.name))
+                    self.send_header('Content-Length', str(archive.stat().st_size))
+                    self.end_headers()
+                    with archive.open('rb') as stream:
+                        while chunk:=stream.read(1024*1024):self.wfile.write(chunk)
+                else:
+                    body=self.control.bias_export(name)
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type","application/octet-stream")
+                    labels={'summary.csv':'逐档统计.csv','runs.csv':'逐次记录.csv','result.json':'任务结果.json','config.json':'配置快照.json'}
+                    job_name=self.control.bias_controller.folder.name
+                    self.send_header("Content-Disposition", "attachment; filename=bias-"+name+"; filename*=UTF-8''"+quote(job_name+'__'+labels[name]))
+                    self.send_header("Content-Length",str(len(body)))
+                    self.end_headers();self.wfile.write(body)
+            elif path == "/api/storage/archive":
+                from .data_sessions import archive_session
+                supplied = parse_qs(parsed.query).get('directory', [''])[0]
+                folder = Path(supplied).resolve()
+                data_root = DATA_DIR.resolve()
+                if not supplied or folder == data_root or not folder.is_relative_to(data_root) or 'exports' in folder.relative_to(data_root).parts:
+                    raise ValueError('请选择本项目 data 下一个已保存任务的文件夹')
+                with self.control._lock:
+                    if self.control.status.state in {'running', 'paused'}:
+                        raise RuntimeError('请等待仪器任务完成后打包')
+                    archive = archive_session(folder)
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header('Content-Type', 'application/zip')
+                    self.send_header('Content-Disposition', "attachment; filename=waveguard-data.zip; filename*=UTF-8''"+quote(archive.name))
+                    self.send_header('Content-Length', str(archive.stat().st_size))
+                    self.end_headers()
+                    with archive.open('rb') as stream:
+                        while chunk := stream.read(1024*1024): self.wfile.write(chunk)
+            elif path == "/api/storage/naming":
+                self._send_json({"names": preferences()})
             elif path == "/api/config":
                 self._send_json(defaults().to_dict())
             elif path == "/api/status":
@@ -1196,7 +1295,15 @@ class PicoWebHandler(BaseHTTPRequestHandler):
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
             payload = self._read_json()
-            if path == "/api/interference/session":
+            if path == "/api/bias-scan/connect":
+                self._send_json(self.control.bias_connect(payload))
+            elif path == "/api/bias-scan/recover":
+                self._send_json(self.control.bias_recover())
+            elif path == "/api/bias-scan/preflight":
+                self._send_json(self.control.bias_preflight(payload))
+            elif path == "/api/bias-scan/start":
+                self._send_json({"task_id":self.control.start_bias_scan(payload)}, HTTPStatus.ACCEPTED)
+            elif path == "/api/interference/session":
                 raise ValueError(THREE_CHANNEL_LIMIT)
                 self._send_json({"session": interference.create_session(payload, self.control.interference_output_root)}, HTTPStatus.CREATED)
             elif path == "/api/interference/run":
@@ -1257,6 +1364,8 @@ class PicoWebHandler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/awg-preview":
                 self._send_json(awg_preview_payload(payload))
+            elif path == "/api/files/list":
+                self._send_json(list_directory(str(payload.get("path", "")), DATA_DIR))
             elif path == "/api/analysis/browse":
                 self._send_json(discover_sources(str(payload.get("path", ""))))
             elif path == "/api/analysis/process":
@@ -1359,6 +1468,8 @@ class PicoWebHandler(BaseHTTPRequestHandler):
             elif path == "/api/trip/resolve":
                 self.control.resolve_trip()
                 self._send_json({"ok": True, "resumed": True})
+            elif path == "/api/storage/naming":
+                self._send_json({"names": save_preferences(payload.get("names", {}))})
             elif path == "/api/save":
                 saved = self.control.save(str(payload.get("format", "npz")))
                 self._send_json({"path": str(saved)})

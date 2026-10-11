@@ -1,4 +1,4 @@
-param([string]$PythonExe = "", [int]$Port = 4825)
+param([string]$PythonExe = "", [int]$Port = 4826)
 $ErrorActionPreference = 'Stop'
 if (-not $PythonExe) {
     $bundledPython = Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'

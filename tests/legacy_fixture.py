@@ -8,6 +8,12 @@ from redscope.waveforms import normalized_waveform
 class Pico4824A:
     def __init__(self, simulate=True):
         if not simulate: raise ValueError('Fixture is simulation-only')
+        self.simulate=True
+        self.is_open=False
+    def open(self):self.is_open=True;return self
+    def close(self):self.is_open=False
+    def stop(self):pass
+    def disable_awg_output(self):pass
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def capture(self, config: AcquisitionConfig) -> CaptureResult:

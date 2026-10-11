@@ -27,7 +27,7 @@ MAX_UPLOAD = 128 * 1024 * 1024
 ANALYSIS_PATHS = {'/api/analysis/run-preview','/api/analysis/sweep-reevaluate','/api/analysis/export',
                   '/api/lcr-analysis/load','/api/big-lcr/linearity'}
 HARDWARE_PATHS = {'/api/capture','/api/sweep/start','/api/lcr/start','/api/lcr/calibrate',
-                  '/api/big-lcr/start','/api/lcr-linearity/start'}
+                  '/api/big-lcr/start','/api/lcr-linearity/start','/api/bias-scan/start'}
 
 def managed_path(value):
     path = Path(value).expanduser()
@@ -177,7 +177,7 @@ class Handler(web.PicoWebHandler):
                         self.control.result=capture
                 self._send_json(self.control.result_payload()); return
             if parsed.path=='/api/download': self.download(query.get('path',[''])[0]); return
-            if parsed.path in ('/icons.js','/board.js','/port.js','/board.css','/icon.svg','/favicon.png'):
+            if parsed.path in ('/icons.js','/board.js','/port.js','/board.css','/icon.svg','/favicon.png','/interference/board.js','/shell-board.js'):
                 self._send_asset(parsed.path[1:],mimetypes.guess_type(parsed.path)[0] or 'application/octet-stream'); return
             super().do_GET()
         except Exception as error: self._send_json({'error':str(error)},400)
@@ -286,7 +286,7 @@ class Handler(web.PicoWebHandler):
                         raise ValueError('ZIP 仅允许数据文件')
                 check_space(sum(i.file_size for i in archive.infolist()))
                 archive.extractall(folder)
-            configs=[p for name in ('sweep_config.json','lcr_config.json','big_lcr_config.json','linearity_config.json','session.json') for p in folder.rglob(name)]
+            configs=[p for name in ('sweep_config.json','lcr_config.json','big_lcr_config.json','linearity_config.json','session.json','config.json') for p in folder.rglob(name)]
             target=configs[0].parent if len(configs)==1 else folder
             for data in folder.rglob('*.npz'): check_npz(data)
         else: check_npz(target)
@@ -320,14 +320,15 @@ def main():
     parser=argparse.ArgumentParser(); parser.add_argument('--host',default='0.0.0.0'); parser.add_argument('--port',type=int,default=4825); args=parser.parse_args()
     ROOT.mkdir(parents=True,exist_ok=True)
     server=ThreadingHTTPServer((args.host,args.port),Handler); server.control=web.WebControlState(); server.jobs=Jobs()
+    server.web_assets=web.snapshot_web_assets()
     server.lease_owner=''; server.lease_deadline=0; server.shutdown_event=threading.Event()
     threading.Thread(target=watchdog,args=(server,),daemon=True).start()
-    print(f'Hann Burst Scope v2 http://{args.host}:{args.port}',flush=True)
+    print(f'Red Pitaya BTF http://{args.host}:{args.port}',flush=True)
     try: server.serve_forever()
     finally:
         server.shutdown_event.set()
         server.jobs.cancel()
-        if server.control.snapshot()['state'] in ('running','paused'): server.control.stop()
-        server.server_close()
+        try: server.control.shutdown()
+        finally: server.server_close()
 
 if __name__=='__main__': main()

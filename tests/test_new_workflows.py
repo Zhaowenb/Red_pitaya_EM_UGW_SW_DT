@@ -154,7 +154,7 @@ class NewWorkflowTests(unittest.TestCase):
         original=interference.create_session({'config':legacy.to_dict(),
             'channels':{'rx':'A','rod':'B','trigger':'C','rx_probe':1,'rod_probe':1},
             'windows_us':{'t0':0,'baseline_start':-50,'baseline_end':-5,'tail_end':200},'repeats':3},folder)
-        source=folder/original['id']; before=(source/'session.json').read_bytes()
+        source=Path(original['output_dir']); before=(source/'session.json').read_bytes()
         code,body=self.request('/api/interference/import',{'directory':str(source)})
         self.assertEqual(code,200,body)
         self.assertNotEqual(json.loads(body)['session']['id'],original['id'])

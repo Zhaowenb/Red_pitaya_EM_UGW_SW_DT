@@ -1,0 +1,4 @@
+# Optional: IT6524D USB power supply. Not required for offline/simulated scans.
+PyVISA>=1.14,<2
+PyVISA-py>=0.7,<1
+pyusb>=1.2,<2

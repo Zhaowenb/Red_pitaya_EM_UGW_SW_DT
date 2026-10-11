@@ -168,6 +168,14 @@ static void client(int fd) {
         std::string line; char c;
         while(line.size()<4096) { exact_read(fd,&c,1); if(c=='\n') break; line+=c; }
         if(line=="STOP") { cancelled=true; text(fd,"OK\n"); }
+        else if(line=="OFF") {
+            std::unique_lock<std::mutex> lock(hardware_lock,std::try_to_lock);
+            if(!lock.owns_lock()) throw std::runtime_error("Capture still owns hardware; stop and wait before OFF");
+            RP_CHECK(rp_GenOutDisable(RP_CH_1));
+            RP_CHECK(rp_GenOutDisable(RP_CH_2));
+            off();
+            text(fd,"OK DAC disabled\n");
+        }
         else if(line=="PING") text(fd,"OK hann_scope hardware v2\n");
         else { std::istringstream input(line); std::string op; input>>op; if(op!="CAPTURE") throw std::runtime_error("Unknown command"); capture(fd,input); }
     } catch(const std::exception& error) { try { text(fd,std::string("ERROR ")+error.what()+"\n"); } catch(...) {} }

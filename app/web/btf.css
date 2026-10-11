@@ -1,0 +1,36 @@
+/* Red Pitaya extensions follow the upstream workstation's material tokens. */
+.rp-icon { width:17px; height:17px; min-width:17px; display:inline-block; vertical-align:middle; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+button .rp-icon,.wg-nav .rp-icon { margin-right:6px; }
+.wg-header { display:flex; flex-wrap:nowrap; gap:10px; }
+.wg-brand { flex-shrink:0; min-width:0; white-space:nowrap; }
+.wg-brand strong { font-size:18px; }
+.wg-brand-mark { flex:none; }
+.wg-header .wg-nav { justify-content:flex-start; }
+.rp-btf-status { max-width:210px; overflow:hidden; text-overflow:ellipsis; }
+#rpTools { position:fixed; z-index:80; right:20px; top:66px; width:min(720px,calc(100vw - 40px)); max-height:75vh; overflow:auto; padding:20px; border:1px solid var(--wg-line,#3a3d43); border-radius:16px; background:var(--wg-surface,#181b21); box-shadow:0 18px 60px #0006; display:flex; flex-wrap:wrap; gap:12px; }
+#rpTools[hidden] { display:none; }
+#rpTools input { min-width:220px; flex:1; }
+#rpTools label { display:flex; align-items:center; gap:8px; }
+#rpTools .rp-telemetry { flex-basis:100%; font-size:12px; color:var(--wg-muted,#a6acb8); }
+.wg-header .rp-home { white-space:nowrap; font-size:12px; padding:6px 10px; border:1px solid var(--wg-line,#3a3d43); border-radius:7px; }
+.rp-board-settings { border-top:1px solid var(--wg-line,#3a3d43); margin-top:18px; padding-top:14px; }
+.rp-system-dialog { color:var(--wg-ink,#e9edf5); background:var(--wg-surface,#181b21); border:1px solid #424650; border-radius:16px; max-width:min(800px,90vw); }
+.rp-system-dialog pre { white-space:pre-wrap; font:12px/1.6 monospace; }
+.rp-limit-notice,.rp-btf-note { font-size:12px; line-height:1.7; border-left:2px solid #db9a45; padding-left:10px; color:var(--wg-muted,#a6acb8); }
+.rp-unsupported [id=\"linearityStartBtn\"] { opacity:.45; }
+.rp-btf-status { font-size:11px; color:var(--wg-muted,#a6acb8); white-space:nowrap; }
+@media(max-width:1400px) {
+ :root { --wg-header-height:106px; }
+ .wg-header { height:var(--wg-header-height); display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; grid-template-rows:44px 40px; gap:6px 10px; padding:8px 16px; }
+ .wg-header .wg-brand { grid-column:1; grid-row:1; }
+ .wg-header .wg-nav { grid-column:1/-1; grid-row:2; width:100%; min-width:0; height:40px; }
+ .wg-header .rp-home { grid-column:2; grid-row:1; }
+ .wg-header #workstationSettingsButton { grid-column:3; grid-row:1; }
+ .wg-header>.wg-icon-button:not(#workstationSettingsButton) { grid-column:4; grid-row:1; }
+ .wg-header .rp-btf-status { display:none; }
+ #rpTools { top:112px; }
+}
+@media(max-width:760px) {
+ .wg-brand strong { font-size:14px; }
+ .wg-header .rp-home { font-size:10px; padding:6px; }
+}

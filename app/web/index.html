@@ -3,37 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <title>Hann Burst Scope · Red Pitaya 控制台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260923-lcr-folder-analysis1" />
-  <link rel="icon" href="/favicon.png" /><link rel="stylesheet" href="/board.css" />
+    <meta name="color-scheme" content="light dark" />
+    <title>WaveGuard · 实时测量</title>
+    <link rel="stylesheet" href="/styles.css?v=shared-ui-v2" />
+  <link rel="stylesheet" href="/ui/workstation.css?v=shared-ui-v2">    <link rel="stylesheet" href="/views/bias-scan.css">
+    <link rel="stylesheet" href="/btf.css"><link rel="icon" href="/icon.svg" type="image/svg+xml">
   </head>
-  <body data-page="measure">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark"><span></span><span></span><span></span></div>
-        <div>
-          <p class="eyebrow">GUIDED WAVE LAB</p>
-          <h1>Hann Burst Scope · Red Pitaya</h1>
-        </div>
-      </div>
-      <nav class="page-nav" aria-label="主功能">
-        <a href="/measure" data-nav="measure">实时测量</a>
-        <a href="/sweep" data-nav="sweep">参数扫描</a>
-        <a href="/lcr" data-nav="lcr">LCR测量</a>
-        <a href="/lcr-linearity" data-nav="lcr-linearity">LCR数据分析</a>
-        <a href="/file-analysis" data-nav="file-analysis">单数据分析</a>
-        <a href="/sweep-analysis" data-nav="sweep-analysis">参数数据分析</a>
-      </nav>
-      <a id="rpHome" class="rp-home" href="/#" target="_top">⌂ 返回主界面</a>
-      <div class="connection">
-        <span id="statusDot" class="status-dot"></span>
-        <div>
-          <strong id="stateText">系统就绪</strong>
-          <small id="modeText">本机仪器服务 · 127.0.0.1</small>
-        </div>
-      </div>
-    </header>
+  <body data-page="measure" data-analysis-theme="light">
+    <header data-wg-header></header><div hidden><span id="statusDot"></span><strong id="stateText"></strong><small id="modeText"></small></div>
+
+
 
     <main class="workspace">
       <aside class="control-stack">
@@ -47,7 +26,7 @@
             </label>
           </div>
           <div class="form-grid">
-            <label>采样率 <span>MS/s</span><input id="sampleRate" type="number" value="5" min="0.001" max="80" step="0.1" /></label>
+            <label>采样率 <span>MS/s</span><input id="sampleRate" type="number" value="20" min="0.001" max="80" step="0.1" /></label>
             <label>默认输入量程
               <select id="inputRange">
                 <option>10mV</option><option>20mV</option><option>50mV</option>
@@ -60,7 +39,7 @@
             <label>触发位置 <span>%记录长度</span><input id="triggerPositionPercent" type="number" value="10" min="0" max="99.999" step="0.1" /></label>
           </div>
           <div id="capturePlanSummary" class="analysis-meta">20 MS/s × 10000 μs = 200000 点/通道；触发前10%，触发后90%</div>
-          <div class="subhead"><span>同步输入 IN1 / IN2</span><small>量程须与物理跳线一致</small></div>
+          <div class="subhead"><span>同步输入 IN1 / IN2</span><small>角色决定启用；量程须匹配 LV/HV 跳线</small></div>
           <div id="channels" class="channel-grid"></div>
         </section>
 
@@ -77,7 +56,7 @@
             <label>电平 <span>V</span><input id="triggerLevel" type="number" value="0.1" step="0.01" /></label>
             <label>超时 <span>ms</span><input id="triggerTimeout" type="number" value="2000" min="0" step="100" /></label>
           </div>
-          <p id="triggerWiringNote" class="wiring-note"><span>i</span> 板内 AWG 触发同步，无需输入回接。</p>
+          <p class="wiring-note"><span>!</span> AWG 或功放低压监测输出应回接至触发通道。</p>
         </section>
 
         <section class="panel page-only" data-pages="measure">
@@ -97,7 +76,7 @@
             </select></label>
             <label>频率 <span>kHz</span><input id="awgFrequency" type="number" value="100" min="0.001" max="1000" step="1" /></label>
             <label>周期数<input id="awgCycles" type="number" value="5" min="1" step="1" /></label>
-            <label>峰峰值 <span>V</span><input id="awgVpp" type="number" value="0.1" min="0.001" max="4" step="0.1" /></label>
+            <label>峰峰值 <span>V</span><input id="awgVpp" type="number" value="2" min="0.001" max="4" step="0.1" /></label>
             <label>偏置 <span>V</span><input id="awgOffset" type="number" value="0" min="-2" max="2" step="0.1" /></label>
             <label>AWG 缓冲点数<input id="awgBufferSamples" type="number" value="8192" min="10" max="16384" step="1" /></label>
           </div>
@@ -216,7 +195,7 @@
             <label>强信号最低强度 <span>dB</span><input id="recommendationStrongMinStrength" type="number" value="-6" max="0" step="0.5" /></label>
             <label>最低反射 SNR <span>dB</span><input id="recommendationMinReflectionSnr" type="number" value="25" min="0" step="1" /></label>
           </div>
-          <p class="wiring-note"><span>i</span> A–H均可作为评价、显示和分析通道。评价通道必须已启用，且不能与当前发射监测通道重复；D/H配置可选择D评价、H监测与触发。信号处理参数对下一次扫描生效。</p>
+          <p class="wiring-note"><span>i</span> 现场扫描仅使用 IN1(A) / IN2(B)。评价通道必须是已启用的接收角色，不能与发射监测通道重复。历史 A–H 归档仍完整保留分析支持。</p>
           <div class="sweep-action-row">
             <button id="sweepBtn" class="sweep-start"><span class="play"></span>开始自动扫描</button>
             <button id="sweepStopBtn" class="sweep-stop" disabled>停止扫描</button>
@@ -237,7 +216,7 @@
             <label class="switch-label"><input id="bigLcrSimulate" type="checkbox" /><span class="switch"></span>仿真</label>
           </div>
           <div class="form-grid">
-            <label>采样率 <span>MS/s</span><input id="bigLcrSampleRate" type="number" value="5" min="0.001" max="125" step="0.1" /></label>
+            <label>采样率 <span>MS/s</span><input id="bigLcrSampleRate" type="number" value="20" min="0.001" max="80" step="0.1" /></label>
             <label>触发电平 <span>V</span><input id="bigLcrTriggerLevel" type="number" value="0.02" step="0.005" /></label>
             <label>触发来源<select id="bigLcrTriggerSignal"><option value="voltage" selected>Voltage Monitor</option><option value="current">Current Monitor</option></select></label>
             <label>Voltage Monitor 通道<select id="bigLcrVoltageChannel"></select></label>
@@ -247,7 +226,7 @@
           </div>
           <label class="safety-ack-label"><input id="bigLcrAutoRange" type="checkbox" checked />Pico 双监测通道自动量程（每点最多额外重采 2 次）</label>
           <p class="wiring-note"><span>i</span> 上方量程是第一次采集的起点；自动量程只调整 Pico ADC，不控制 ATA 输出档位。每次重采会重新发出一次 AWG 突发，并保存波形。</p>
-          <p class="wiring-note"><span>!</span> Red Pitaya OUT 接 ATA-2021B 输入；Voltage Monitor 和 Current Monitor 两个 SMA 分别回到IN1 / IN2。这里不需要 AWG 监测端口，也不要把 ATA 功率输出直接接入 Red Pitaya。</p>
+          <p class="wiring-note"><span>!</span> Red Pitaya DAC 接 ATA-2021B 输入；Voltage Monitor 和 Current Monitor 两个 SMA 分别回到IN1 / IN2。这里不需要 AWG 监测端口，也不要把 ATA 功率输出直接接入 Pico。</p>
         </section>
 
         <section id="bigLcrScanPanel" class="panel page-only" data-pages="lcr" data-lcr-mode="big">
@@ -262,9 +241,9 @@
             <label id="bigLcrLinearStepLabel">步长 <span>kHz</span><input id="bigLcrFrequencyStep" type="number" value="5" min="0.001" step="1" /></label>
             <label id="bigLcrLogPointsLabel" hidden>每十倍频程点数<input id="bigLcrPointsPerDecade" type="number" value="12" min="1" max="200" step="1" /></label>
           </div></div>
-          <div class="subhead"><span>Red Pitaya OUT 输入幅值 / ATA 突发正弦</span><small>矩形扫描逐点更新 AWG Vpp；Irms 是 Current Monitor 实测响应</small></div>
+          <div class="subhead"><span>Red Pitaya DAC 输入幅值 / ATA 突发正弦</span><small>矩形扫描逐点更新 AWG Vpp；Irms 是 Current Monitor 实测响应</small></div>
           <div class="form-grid">
-            <label id="bigLcrFixedVppControl">固定 Red Pitaya OUT 输入 <span>Vpp</span><input id="bigLcrAwgVpp" type="number" value="0.5" min="0.001" max="4" step="0.01" /></label>
+            <label id="bigLcrFixedVppControl">固定 Red Pitaya DAC 输入 <span>Vpp</span><input id="bigLcrAwgVpp" type="number" value="0.5" min="0.001" max="4" step="0.01" /></label>
           </div>
           <div id="bigLcrVppSweepControls" class="form-grid three" hidden>
             <label>起始 <span>Vpp</span><input id="bigLcrVppStart" type="number" value="0.5" min="0.001" max="4" step="0.01" /></label>
@@ -335,7 +314,7 @@
             <label>每点重复<input id="linearityRepeats" type="number" value="3" min="1" max="100" step="1" /></label>
             <label>测量间隔 <span>s</span><input id="linearityInterval" type="number" value="0.5" min="0" max="3600" step="0.1" /></label>
           </div>
-          <div class="subhead"><span>分析时间窗</span><small>所有时间相对 ADC 触发点，可按实际传播延迟调整</small></div>
+          <div class="subhead"><span>分析时间窗</span><small>所有时间相对 Pico 触发点，可按实际传播延迟调整</small></div>
           <div class="form-grid three">
             <label>Noise 起点 <span>μs</span><input id="linearityNoiseStart" type="number" value="-120" step="1" /></label>
             <label>Noise 终点 <span>μs</span><input id="linearityNoiseEnd" type="number" value="-20" step="1" /></label>
@@ -364,7 +343,7 @@
             <label class="switch-label"><input id="lcrSimulate" type="checkbox" /><span class="switch"></span>仿真</label>
           </div>
           <div class="form-grid">
-            <label>采样率 <span>MS/s</span><input id="lcrSampleRate" type="number" value="5" min="0.001" max="125" step="0.1" /></label>
+            <label>采样率 <span>MS/s</span><input id="lcrSampleRate" type="number" value="20" min="0.001" max="80" step="0.1" /></label>
             <label>所选输出触发电平 <span>V</span><input id="lcrTriggerLevel" type="number" value="0.02" step="0.005" /></label>
             <label>采集触发来源<select id="lcrTriggerSignal"><option value="voltage" selected>RF_OUT1（电压）</option><option value="current">RF_OUT2（电流）</option></select></label>
             <label>电压输出 RF_OUT1<select id="lcrVoltageChannel"></select></label>
@@ -372,7 +351,7 @@
             <label>电流输出 RF_OUT2<select id="lcrCurrentChannel"></select></label>
             <label>电流通道量程<select id="lcrCurrentRange"></select></label>
           </div>
-          <p class="wiring-note"><span>i</span> 只需两路采集：RF_IN1 接 Red Pitaya OUT；RF_OUT1、RF_OUT2 分别接电压/电流通道，其中任选一路兼作触发。不需要 AWG 监测或第三根触发线。测低阻抗时若 RF_OUT1 太小，可改用 RF_OUT2 触发。禁止把功放高压输出接入此板或 Red Pitaya。</p>
+          <p class="wiring-note"><span>i</span> 只需两路采集：RF_IN1 接 Red Pitaya DAC；RF_OUT1、RF_OUT2 分别接电压/电流通道，其中任选一路兼作触发。不需要 AWG 监测或第三根触发线。测低阻抗时若 RF_OUT1 太小，可改用 RF_OUT2 触发。禁止把功放高压输出接入此板或 Pico。</p>
         </section>
 
         <section class="panel page-only" data-pages="lcr" data-lcr-mode="small">
@@ -429,12 +408,12 @@
 
         <section class="panel analysis-source-panel page-only" data-pages="file-analysis">
           <div class="panel-heading compact">
-            <div><span class="step">01</span><h2>数据源</h2></div>
+            <div><span class="analysis-panel-kicker">SOURCE</span><h2>数据源</h2></div>
             <small>NPZ / CSV</small>
           </div>
           <label>文件或文件夹完整路径
             <div class="inline-input">
-              <input id="analysisPath" type="text" value="" />
+              <input id="analysisPath" type="text" placeholder="数据目录或已上传文件路径" />
               <button id="analysisBrowseBtn">读取</button>
             </div>
           </label>
@@ -444,20 +423,18 @@
           <div id="analysisMeta" class="analysis-meta">尚未加载数据</div>
         </section>
 
-        <section class="panel page-only" data-pages="file-analysis">
+        <section class="panel analysis-time-controls page-only" data-pages="file-analysis">
           <div class="panel-heading compact">
-            <div><span class="step">02</span><h2>波形与带通</h2></div>
-            <label class="switch-label icon-only" title="启用带通">
-              <input id="analysisFilterEnabled" type="checkbox" />
-              <span class="switch"></span>
-            </label>
+            <div><span class="analysis-panel-kicker">CONTEXT</span><h2>分析上下文</h2></div>
+            <label class="analysis-input-filter"><input id="analysisFilterEnabled" type="checkbox" />数学分析使用带通输入</label>
           </div>
+          <div class="subhead analysis-band-heading"><span>带通参数</span><small>Filtered / Mix 共用</small></div>
           <div class="form-grid three">
             <label>下限 <span>kHz</span><input id="analysisBandLow" type="number" value="60" min="0" step="1" /></label>
             <label>上限 <span>kHz</span><input id="analysisBandHigh" type="number" value="90" min="0.001" step="1" /></label>
             <label>过渡带 <span>kHz</span><input id="analysisTransition" type="number" value="5" min="0" step="0.5" /></label>
           </div>
-          <div class="analysis-checks">
+          <div class="analysis-checks" hidden aria-hidden="true">
             <label><input id="analysisShowRaw" type="checkbox" checked />原始</label>
             <label><input id="analysisShowFiltered" type="checkbox" />带通后</label>
           </div>
@@ -478,9 +455,9 @@
           </div>
         </section>
 
-        <section class="panel page-only" data-pages="file-analysis">
+        <section class="panel analysis-spectrum-controls page-only" data-pages="file-analysis">
           <div class="panel-heading compact">
-            <div><span class="step">03</span><h2>多时段频谱</h2></div>
+            <div><span class="analysis-panel-kicker">FFT</span><h2>多时段频谱</h2></div>
             <button id="addSpectrumWindowBtn" class="small-button">＋时段</button>
           </div>
           <div class="form-grid">
@@ -499,9 +476,9 @@
           <p class="wiring-note"><span>i</span> 带通和频谱均为派生分析；原始文件永不覆盖。不同时间窗使用相同频率坐标，可叠加比较。</p>
         </section>
 
-        <section class="panel page-only" data-pages="file-analysis">
+        <section class="panel analysis-transform-controls page-only" data-pages="file-analysis">
           <div class="panel-heading compact">
-            <div><span class="step">04</span><h2>时频图</h2></div>
+            <div><span class="analysis-panel-kicker">TRANSFORM</span><h2>时频参数</h2></div>
             <small>STFT / WPD / CWT</small>
           </div>
           <div class="form-grid">
@@ -537,10 +514,10 @@
             </div>
             <div class="analysis-checks"><label><input id="cwtLogFrequency" type="checkbox" />对数频率轴</label></div>
           </div>
-          <button id="calculateTimeFrequencyBtn" class="sweep-start">计算时频图</button>
+          <button id="calculateTimeFrequencyBtn" class="sweep-start">应用参数并重新计算</button>
         </section>
 
-        <section class="panel experimental-panel page-only" data-pages="file-analysis">
+        <section class="panel experimental-panel analysis-experimental-controls page-only" data-pages="file-analysis">
           <div class="panel-heading compact">
             <div><span class="test-badge">TEST</span><h2>空间—时间对称性分析</h2></div>
             <small>不参与正式评价</small>
@@ -580,7 +557,7 @@
           </div>
           <label>扫描文件夹完整路径
             <div class="inline-input">
-              <input id="archivePath" type="text" value="" />
+              <input id="archivePath" type="text" placeholder="扫描归档目录或已上传归档路径" />
               <button id="archiveLoadBtn">读取</button>
             </div>
           </label>
@@ -627,7 +604,7 @@
         <section class="panel hero-control page-only lcr-folder-mode-panel" data-pages="lcr-linearity">
           <div class="panel-heading"><div><span class="step">MODE</span><h2>LCR 分析模式</h2></div><small>仅读取已保存文件夹</small></div>
           <label>分析类型<select id="lcrAnalysisMode"><option value="big_lcr" selected>大信号 LCR 文件夹分析</option><option value="linearity">大信号线性度与波形畸变文件夹分析</option><option value="small_lcr">小信号 LCR 文件夹分析</option></select></label>
-          <p class="wiring-note"><span>i</span> 三种模式互斥，切换会保留各自文件夹路径；分析页面不会启动 采集或 AWG。</p>
+          <p class="wiring-note"><span>i</span> 三种模式互斥，切换会保留各自文件夹路径；分析页面不会启动 ADC 或 DAC。</p>
         </section>
         <section class="panel page-only lcr-folder-source" data-pages="lcr-linearity" data-lcr-analysis-mode="big_lcr">
           <div class="panel-heading compact"><div><span class="step">SOURCE</span><h2>大信号 LCR 文件夹</h2></div></div>
@@ -672,18 +649,44 @@
       </aside>
 
       <section class="monitor-stack">
+        <section class="analysis-intro workstation-intro" aria-label="WaveGuard 工作区">
+          <div class="analysis-app-title">
+            <p id="workspaceEyebrow" class="eyebrow">LIVE ACQUISITION</p>
+            <h2 id="workspaceTitle">实时测量</h2>
+          </div>
+          <div class="analysis-app-status">
+            <span id="workspaceInstrument" class="analysis-instrument-id">STEMlab 125-14 Pro Z7020 Gen2 · 2 ADC / 2 DAC</span>
+            <span id="analysisViewState" class="analysis-view-state">系统就绪 · READY</span>
+          </div>
+        </section>
+        <div class="analysis-lens-bar page-only" data-pages="file-analysis">
+          <nav class="analysis-lenses" role="tablist" aria-label="Analysis Lens">
+            <div class="lens-group"><span>TIME</span><button type="button" role="tab" aria-selected="true" data-analysis-lens="raw">Raw</button><button type="button" role="tab" aria-selected="false" data-analysis-lens="filtered">Filtered</button><button type="button" role="tab" aria-selected="false" data-analysis-lens="mix">Mix</button></div>
+            <div class="lens-group"><span>SPECTRUM</span><button type="button" role="tab" aria-selected="false" data-analysis-lens="fft">FFT</button></div>
+            <div class="lens-group"><span>TIME–FREQUENCY</span><button type="button" role="tab" aria-selected="false" data-analysis-lens="stft">STFT</button><button type="button" role="tab" aria-selected="false" data-analysis-lens="cwt">CWT</button></div>
+            <div class="lens-group"><span>DECOMPOSITION</span><button type="button" role="tab" aria-selected="false" data-analysis-lens="wpd">WPD</button></div>
+            <button type="button" class="lens-experimental" role="tab" aria-selected="false" data-analysis-lens="experimental"><span>EX</span> 实验分析</button>
+          </nav>
+          <div id="analysisLensSettings" class="analysis-lens-settings">
+            <button id="analysisLensSettingsButton" class="analysis-lens-settings-trigger" type="button" aria-label="打开当前 Lens 参数" aria-controls="analysisLensSettingsPopover" aria-expanded="false">
+              <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/><circle cx="6" cy="4" r="1.35"/><circle cx="10" cy="8" r="1.35"/><circle cx="5" cy="12" r="1.35"/></svg>
+              <span>参数设置</span>
+            </button>
+            <div id="analysisLensSettingsPopover" class="analysis-lens-settings-popover" hidden></div>
+          </div>
+        </div>
         <section class="metrics page-only" data-pages="measure">
           <article><span>采样点</span><strong id="sampleMetric">—</strong><small>每通道</small></article>
           <article><span>实际采样率</span><strong id="rateMetric">—</strong><small>MS/s</small></article>
           <article><span>采样间隔</span><strong id="intervalMetric">—</strong><small>ns</small></article>
-          <article><span>输入状态</span><strong id="overflowMetric">正常</strong><small>过量程检测</small></article>
+          <article><span>输入状态</span><strong id="overflowMetric">—</strong><small>过量程检测</small></article>
         </section>
 
         <section class="scope-panel page-only" data-pages="measure">
           <div class="scope-toolbar">
             <div>
               <p class="eyebrow">SYNCHRONOUS ACQUISITION</p>
-              <h2>IN1 / IN2 波形</h2>
+              <h2>双通道采集波形</h2>
               <small class="scope-interaction-help">滚轮：时间缩放　拖动：时间平移　Shift＋滚轮：幅值缩放　双击：恢复全时段</small>
             </div>
             <div class="scope-actions">
@@ -701,6 +704,20 @@
             </div>
           </div>
           <div class="timebar"><span id="timeStart">—</span><span class="trigger-mark">触发点 t = 0</span><span id="timeEnd">—</span></div>
+        </section>
+
+        <section id="sweepIdleStage" class="scope-panel workspace-idle-stage page-only" data-pages="sweep" aria-live="polite">
+          <div class="workspace-idle-copy">
+            <p id="sweepIdleEyebrow" class="eyebrow">PARAMETER SWEEP · IDLE</p>
+            <h2 id="sweepIdleTitle">扫描数据舞台</h2>
+            <p id="sweepIdleDescription">配置左侧参数网格并启动扫描。首个有效参数点完成后，这里将呈现评价结果与逐次采集波形。</p>
+          </div>
+          <div class="workspace-idle-axis" aria-hidden="true"><span></span><i></i><b></b></div>
+          <div class="workspace-idle-chain" aria-label="扫描处理链状态">
+            <span><small>01</small>AWG PROGRAM<strong>WAITING</strong></span>
+            <span><small>02</small>ADC BLOCK<strong>WAITING</strong></span>
+            <span><small>03</small>EVALUATION<strong>WAITING</strong></span>
+          </div>
         </section>
 
         <section id="sweepResultPanel" class="scope-panel sweep-result-panel page-only" data-pages="sweep" hidden>
@@ -766,7 +783,7 @@
             <article><span>Vrms / Irms</span><strong id="bigLcrViMetric">—</strong><small>V / A</small></article>
           </div>
           <div class="big-lcr-status-grid"><div><span>安全状态</span><strong id="bigLcrSafetyMetric">—</strong></div><div><span>电压监测 SNR</span><strong id="bigLcrVoltageSnrMetric">—</strong></div><div><span>电流监测 SNR</span><strong id="bigLcrCurrentSnrMetric">—</strong></div></div>
-          <div class="subhead"><span>|Z(f,Vpp)| 矩形扫描</span><small>横轴频率 / kHz · 纵轴 Red Pitaya OUT Vpp · 色阶为 |Z| / Ω</small></div><div class="lcr-canvas-wrap"><canvas id="bigLcrGridCanvas"></canvas></div>
+          <div class="subhead"><span>|Z(f,Vpp)| 矩形扫描</span><small>横轴频率 / kHz · 纵轴 Red Pitaya DAC Vpp · 色阶为 |Z| / Ω</small></div><div class="lcr-canvas-wrap"><canvas id="bigLcrGridCanvas"></canvas></div>
           <div class="lcr-chart-grid big-lcr-chart-grid"><div><div class="subhead"><span>|Z| / Rs / Xs</span><small>最高 Vpp 下的频率曲线</small></div><div class="lcr-canvas-wrap"><canvas id="bigLcrImpedanceCanvas"></canvas></div></div><div><div class="subhead"><span>Leff / Q</span><small>最高 Vpp 下的频率曲线</small></div><div class="lcr-canvas-wrap"><canvas id="bigLcrComponentCanvas"></canvas></div></div></div>
           <div class="subhead"><span>Voltage Monitor 波形</span><small>最近一次采集（监测端）</small></div><div class="lcr-wave-wrap"><canvas id="bigLcrVoltageWaveCanvas"></canvas></div>
           <div class="subhead"><span>Current Monitor 波形</span><small>最近一次采集（监测端）</small></div><div class="lcr-wave-wrap"><canvas id="bigLcrCurrentWaveCanvas"></canvas></div>
@@ -863,12 +880,8 @@
         <section class="scope-panel analysis-workbench page-only" data-pages="file-analysis">
           <div class="scope-toolbar">
             <div>
-              <p class="eyebrow">NON-DESTRUCTIVE ANALYSIS</p>
-              <h2>波形浏览</h2>
-            </div>
-            <div class="analysis-readout">
-              <span id="analysisCursorTime">t = —</span>
-              <span id="analysisCursorValue">V = —</span>
+              <p id="analysisWaveEyebrow" class="eyebrow">TIME DOMAIN / RAW</p>
+              <h2 id="analysisWaveTitle">原始波形</h2>
             </div>
           </div>
           <div id="analysisWaveLegend" class="legend interactive-legend"></div>
@@ -877,6 +890,20 @@
             <div id="analysisWaveEmpty" class="run-empty">输入文件或文件夹路径后开始分析</div>
           </div>
           <div class="analysis-help">滚轮：时间缩放　拖动：时间平移　Shift＋滚轮：幅值缩放　双击：恢复全时段</div>
+        </section>
+
+        <section id="archiveIdleStage" class="scope-panel workspace-idle-stage page-only" data-pages="sweep-analysis" aria-live="polite">
+          <div class="workspace-idle-copy">
+            <p class="eyebrow">SAVED PARAMETER SWEEP · EMPTY</p>
+            <h2>等待扫描归档</h2>
+            <p>读取左侧扫描文件夹后，将在同一数据舞台中建立参数热图、评价表格和逐次采集波形。</p>
+          </div>
+          <div class="workspace-idle-axis" aria-hidden="true"><span></span><i></i><b></b></div>
+          <div class="workspace-idle-chain" aria-label="归档分析链状态">
+            <span><small>01</small>CONFIG<strong>WAITING</strong></span>
+            <span><small>02</small>RUNS<strong>WAITING</strong></span>
+            <span><small>03</small>SUMMARY<strong>WAITING</strong></span>
+          </div>
         </section>
 
         <section id="scanArchivePanel" class="scope-panel scan-archive-panel page-only" data-pages="sweep-analysis" hidden>
@@ -934,11 +961,11 @@
               <p class="eyebrow">TIME–FREQUENCY</p>
               <h2 id="timeFrequencyTitle">STFT时频图</h2>
             </div>
-            <small id="timeFrequencyMeta">设置参数后计算</small>
+            <small id="timeFrequencyMeta">切换 Lens 后自动计算</small>
           </div>
           <div class="tf-canvas-wrap">
             <canvas id="timeFrequencyCanvas"></canvas>
-            <div id="timeFrequencyEmpty" class="run-empty">尚未计算时频图</div>
+            <div id="timeFrequencyEmpty" class="run-empty">载入数据后将自动计算</div>
           </div>
           <div class="tf-colorbar"><span id="tfFloorLabel">−60 dB</span><i></i><span>0 dB</span></div>
         </section>
@@ -962,6 +989,14 @@
             </table>
           </div>
         </section>
+
+        <footer class="analysis-inspector page-only" data-pages="file-analysis" aria-label="当前数据上下文">
+          <div class="inspector-item"><span>DATASET</span><strong id="analysisLensFile">未加载</strong></div>
+          <div class="inspector-item"><span id="analysisLensChannelLabel">CHANNEL</span><strong id="analysisLensChannels">—</strong></div>
+          <div class="inspector-item"><span>SAMPLE RATE</span><strong id="analysisLensRate">—</strong></div>
+          <div class="inspector-item"><span id="analysisLensRangeLabel">TIME RANGE</span><strong id="analysisLensRange">—</strong></div>
+          <div class="analysis-readout"><span id="analysisCursorTime">t = —</span><span id="analysisCursorValue">V = —</span></div>
+        </footer>
 
         <section class="event-panel">
           <div><span class="event-label">运行信息</span><strong id="messageText">系统就绪，可以开始配置。</strong></div>
@@ -992,7 +1027,17 @@
         <small class="trip-alarm-footnote">这是基于监测波形的“疑似跳闸”判断，不是 ATA 硬件状态回读；本次已完成采集及原始数据已保存。</small>
       </section>
     </div>
-    <script src="/app.js?v=20260927-linearity-folder-frequency2"></script>
-  <script src="/icons.js"></script><script src="/board.js"></script><script src="/port.js"></script>
+    <script src="/ui/workstation.js?v=shared-ui-v2"></script>
+    <script src="/ui/storage-naming.js"></script>
+    <script src="/ui/analysis-state.js"></script>
+    <script src="/analysis/time-frequency.js"></script>
+    <script src="/analysis/experimental.js"></script>
+    <script src="/app.js?v=rp-btf-v1"></script>
+    <script src="/icons.js"></script><script src="/board.js"></script><script src="/port.js"></script>
+    <script src="/views/signal-analysis.js?v=shared-ui-v2"></script>
+    <script src="/views/instruments.js?v=shared-ui-v2"></script>
+  <script src="/ui/file-picker.js?v=shared-ui-v2"></script>
+    <script src="/views/bias-scan.js"></script>
+    <script src="/btf.js"></script>
   </body>
 </html>

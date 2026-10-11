@@ -1,0 +1,29 @@
+"""Mechanical product-label adaptation; legacy analysis keeps A-H support."""
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[1]
+path=ROOT/'app/web/index.html'
+code=path.read_text(encoding='utf-8')
+code=code.replace('同步输入通道 A–H','同步输入 IN1 / IN2').replace('每通道可独立启用和设置量程','角色决定启用；量程须匹配 LV/HV 跳线')
+code=code.replace('PicoScope 4824A · 8CH BLOCK CAPTURE','STEMlab 125-14 Pro Z7020 Gen2 · 2 ADC / 2 DAC').replace('<h2>八通道波形</h2>','<h2>双通道采集波形</h2>')
+code=code.replace('Pico AWG','Red Pitaya DAC').replace('所选 Pico 通道','IN1 / IN2').replace('启动 PicoScope 或 AWG','启动 ADC 或 DAC')
+code=code.replace('A–H均可作为评价、显示和分析通道。评价通道必须已启用，且不能与当前发射监测通道重复；D/H配置可选择D评价、H监测与触发。信号处理参数对下一次扫描生效。','现场扫描仅使用 IN1(A) / IN2(B)。评价通道必须是已启用的接收角色，不能与发射监测通道重复。历史 A–H 归档仍完整保留分析支持。')
+path.write_text(code,encoding='utf-8',newline='\n')
+for relative in ['app/web/magnetic-diagnosis.html','app/web/interference/index.html']:
+    path=ROOT/relative;code=path.read_text(encoding='utf-8')
+    if '/shell-board.js' not in code:
+        extra='<link rel="stylesheet" href="/btf.css"><link rel="icon" href="/icon.svg" type="image/svg+xml">'
+        code=code.replace('</head>',extra+'</head>')
+        extra='<script src="/shell-board.js"></script>'
+        if 'interference/index' in relative:extra='<script src="/interference/board.js"></script>'+extra
+        code=code.replace('</body>',extra+'</body>')
+        path.write_text(code,encoding='utf-8',newline='\n')
+path=ROOT/'app/web/views/bias-scan.js'
+code=path.read_text(encoding='utf-8').replace('waveguard-bias-settings','redpitaya-btf-bias-settings')
+path.write_text(code,encoding='utf-8',newline='\n')
+path=ROOT/'app/web/app.js'
+code=path.read_text(encoding='utf-8').replace('"pico4824a-settings"','"redpitaya-btf-settings"')
+code=code.replace('IT6524D → PicoScope 4824A','IT6524D → Red Pitaya IN1 / IN2')
+code=code.replace('PicoScope 4824A · 8CH BLOCK CAPTURE','STEMlab 125-14 Pro Z7020 Gen2 · 2 ADC / 2 DAC').replace('AWG → TRIGGER → 8CH CAPTURE','DAC → TRIGGER → 2CH CAPTURE')
+code=code.replace('PicoScope 4824A · OFFLINE ANALYSIS','RED PITAYA / PICO A–H · OFFLINE ANALYSIS')
+code=code.replace('document.title = `WaveGuard · ${copy[1]}`','document.title = `WaveGuard BTF · ${copy[1]}`').replace('textContent = "WaveGuard"','textContent = "WaveGuard BTF"')
+path.write_text(code,encoding='utf-8',newline='\n')

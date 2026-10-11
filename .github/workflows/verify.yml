@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r app/requirements.txt
-      - run: python -m unittest discover -s tests -v
+      - run: python tools/check.py -v
         env:
           PYTHONPATH: app
           OPENBLAS_NUM_THREADS: '1'
@@ -30,7 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: waveguard-studio/package-lock.json
       - run: |
-          for file in app/web/*.js app/web/interference/*.js; do node --check "$file"; done
+          find app/web -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm ci
         working-directory: waveguard-studio
       - run: npm run build

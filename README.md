@@ -1,90 +1,58 @@
-# Red Pitaya EM / UGW Studio
+# WaveGuard BTF · Red Pitaya
 
-面向 **STEMlab 125-14 Pro Z7020 Gen2** 的激励、采集、导波分析和阻抗测量软件。板端应用沿用 **Hann Burst Scope** 名称与 `hann_scope` 菜单入口。
+`btf` 分支：以 `Pico_4824A_btf` 工作站为功能与界面参考，移植到 **STEMlab 125-14 Pro Z7020 Gen2**。本地独立目录为 `software/red_pitaya_btf`；不修改 Pico 参考目录或原 `red_pitaya` 项目。
 
-当前维护版本为 `app/`：Python + NumPy 负责分析、扫描和存储，独立 C++ 服务独占 ADC/DAC，网页使用离线 HTML/CSS/JavaScript。`waveguard-studio/` 是独立 React 演示原型，带 DEMO DATA 标识。
+这是可运行的软件移植版，不是全部实机验收通过的声明。当前完成本机仿真、API、算法与浏览器验收；此次未部署到板卡、未连接电源或产生真实输出。
 
-## 功能与硬件边界
-
-| 功能 | 当前实现 |
-|---|---|
-| 激励 | 正弦、方波、三角、Hann、消振、爬升保持、平顶 LCR、CSV；Vpp、偏置、频率、周期、相位 |
-| 双输出 | OUT1、OUT2、轮流、同步起发；独立 OUT2 参数；同频载波固定相位差 |
-| 采集 | IN1/IN2；触发与预触发；默认 5 MS/s、50,000 点、10 ms；DDR 深存储 |
-| 扫描 | 频率、周期、二维、重复；停止保留数据；N/f 分窗、SNR、拖尾、稳定时间和排名 |
-| 单数据分析 | 游标、缩放和平移、零相位带通、FFT/PSD、STFT/WPD/CWT、多时间窗、派生导出 |
-| 归档 | NPZ、CSV+JSON、ZIP；逐次读取、重算、热图、推荐；原始记录保留 |
-| LCR | 小信号复数校准、大信号频率×Vpp 扫描、暂停恢复、阻抗/谐波/线性度归档分析 |
-| 实验性分析 | 双通道空间—时间对称性保留 TEST；Pico 三通道历史文件可分析 |
-| 系统状态 | 型号、温度、负载、内存、存储、运行时间、任务状态 |
-
-现场只有两路 ADC；Pico A～H 是历史数据兼容性。LV/HV 由物理跳线设置，不提供软件自动切换。需要三路独立 Monitor/Receiver 的新采集明确拒绝。
-
-Hann 相位直接写入载波样本，包络保持固定；不同频率不会维持固定相位差。CSV 相位表示整段循环移位。两路输出参考预览不替代 IN1/IN2 实测。
-
-## 目录
-
-```text
-app/                    当前板端应用、分析、硬件服务、网页与图标
-tests/                  仿真、HTTP、算法和相位回归
-tools/                  实机验收与源码打包
-docs/                   使用、移植差异、验收和维护说明
-archive/hann-v1/         旧版控制器及 WebSocket 前端
-archive/migrations/      一次性移植记录
-waveguard-studio/        React + Vite 演示原型与锁定依赖
-.github/workflows/      独立仓库测试与原型构建
-```
-
-采集数据、部署 ZIP、依赖、二进制、SSH 主机记录及 PPT 不进入 Git；现有本地文件保留。轻量实测 JSON 报告上传，原始 NPZ 留在本地，参见 [归档说明](docs/ARCHIVE.md)。
-
-## 本机运行
-
-需要 Python 3.10+：
+## 本机启动
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r app/requirements.txt
-.\start-local.ps1 -PythonExe .\.venv\Scripts\python.exe
+.\start-local.ps1
+# 或指定 Python / 端口
+.\start-local.ps1 -PythonExe "C:\path\to\python.exe" -Port 4826
 ```
 
-访问 `http://127.0.0.1:4825/measure`，本机测试显式选择仿真。跨平台可在 `app` 目录运行 `python -m redscope.server --host 127.0.0.1 --port 4825`。
+打开 **http://127.0.0.1:4826/measure**。实时测量请主动打开“仿真”；偏置扫描默认仿真。所有模拟记录保存 `simulated: true`，不自动以模拟数据代替失联硬件。
 
-## 部署
+跨平台启动：安装 `app/requirements.txt`，在 `app` 目录执行：
 
-```powershell
-.\deploy-v2.ps1 -Device 192.168.10.68 -User root
+```sh
+python -m redscope.server --host 127.0.0.1 --port 4826
 ```
 
-需要 OpenSSH、tar 和 SSH 登录权限。交互认证不保存密码；首次连接需核验板卡 SSH 主机指纹。支持 `-IdentityFile`、`-KnownHostsFile` 和 `-Rollback`。
+## 工作站页面
 
-在板上编译、备份后原位替换 `/opt/redpitaya/www/apps/hann_scope`。数据位于 `/home/redpitaya/hann_scope_data`。HTTP 入口是 `http://<device>/hann_scope/`，不是 `/apps/hann_scope/`。
+保留 BTF 共享 Shell / Stage / Inspector 与深浅色设置：实时测量、参数扫描、LCR 测量、LCR 数据分析、单数据分析、参数数据分析、偏置电流扫描、磁路诊断预览、干扰历史分析。默认深色；所有网页资源与线性图标均本地提供。
 
-已验证 **OS 2.07-48、Python 3.10.12、标准 v0.94 FPGA**。OS 3.00 尚未验收；重刷 SD 卡前备份程序、服务和数据，并在新版重新编译验证。
+新增命名设置、只读文件选择器、任务 ZIP、NPZ/CSV+JSON 同会话保存、偏置 × 激励幅值扫描、PZT 滤波评价、重复统计与误差棒、USB 电源故障恢复。大部分高级参数保留在右侧 Inspector，文件/系统工具位于顶部抽屉。
+
+详细范围与限制见 [功能对照表](docs/BTF_FEATURE_MATRIX.md) 和 [移植设计](docs/BTF_DESIGN.md)。
+
+![BTF 本机仿真采集 · 非实测](docs/images/btf-measure-simulated.jpg)
+
+## 必须知道的硬件边界
+
+- 现场仅 IN1(A)、IN2(B)，历史 Pico A–H 仍可离线分析。LV/HV 为物理跳线；DC 耦合，不支持软件自动量程。
+- 实时采集保留 OUT1、OUT2、轮流四路径、双输出同边沿起发和载波固定相位差。默认 5 MS/s、10 ms、0.1 Vpp；不支持的采样率和记录长度直接报错。
+- 偏置扫描选定单个 OUT1 或 OUT2，使用 PZT 加一路可选电压/电流监测；不能同时测三个独立信号。三路波形保护和三路线性度现场采集不可用。
+- IT6524D 控制是可选 USB 功能。额外安装 `app/requirements-bias.txt`，并在**实际运行 Python 的主机**接入电源。板端 USB 驱动与电源闭环尚未实测。不要把电源功率输出或功放高压直接接入 ADC。
+- 实机偏置必须填写电压、总通电时限、稳定超时、冷却和实际电流上限。默认上限 6 A；21.65 A 是参考负载/电源的配置边界，不是线圈安全认证。软件保护不保证强杀/断电/USB 故障时断电；独立保护和线圈温度适配器未接入。板卡温度不等于线圈温度。
+- 磁路诊断仅模型预览，实机启动锁定；干扰实验只开放历史归档导入与分析。
+
+## 数据与部署
+
+默认本机数据保存在 `app/data/`。板端沿用环境变量 `HANNSCOPE_DATA`，推荐 `/home/redpitaya/hann_scope_data`，命名设置也保存在该数据目录。参考目录不作为输出路径。原始数据、依赖、二进制和测试临时数据不上传 Git。
+
+将来部署沿用 `hann_scope` 应用 ID、`/opt/redpitaya/www/apps/hann_scope` 路径及板端端口 **4825**，会替换同入口的主线版，不与旧控制器同时运行。`deploy-v2.ps1` 包含备份，`-Rollback` 可回退；本次没有执行部署。新 C++ `OFF` 指令需要与 Python 服务一起更新，不能只覆盖网页/Python。
+
+`waveguard-studio/` 是主线遗留的独立 React 演示原型，不是本分支当前工作站。`archive/` 保留旧 Hann 前端与一次性迁移记录。
 
 ## 验证
 
-```powershell
-$env:PYTHONPATH = Join-Path $PWD 'app'
-python -m unittest discover -s tests -v
-node --check app/web/app.js
-node --check app/web/board.js
-node --check app/web/port.js
+```sh
+python tools/check.py
+python tools/compare-btf-reference.py --source ../Pico_4824A_btf
+python tools/verify-btf-source.py --source ../Pico_4824A_btf
 ```
 
-独立仓库可运行自身测试。六项 Pico 原实现对照仅在相邻 `Pico_4824A` 项目存在时运行，缺少则明确跳过。Pico 源码不属于此仓库，也不被测试修改。
-
-2026-09-28 实机完成八组 0.1 Vpp、零偏置双路回环：正弦/Hann 的 0°、90°、180°、−90°，每组两路各 50,000 点、5 MS/s、10 ms，无溢出，并修复 DDR 页对齐。详见 [实机记录](docs/BOARD_ACCEPTANCE_20260928.md)。这不代表全部功能已通过实机验收。
-
-随后修正的发射结果切换竞态通过本机测试，尚未写入当次已验收板卡。详见 [版本状态](docs/STATUS.md)。
-
-## 演示原型
-
-```bash
-cd waveguard-studio
-npm ci
-npm run dev
-```
-
-已包含浏览器演示数据，首次启动无需 Pico 原始文件。`npm run data` 是可选提取操作，见 [原型说明](waveguard-studio/README.md)。
-
-更多文档：[索引](docs/README.md) · [移植说明](MIGRATION.md) · [第三方说明](THIRD_PARTY_NOTICES.md)。本次归档不新指定统一源码许可证。
+首项在隔离数据目录运行板卡仿真、HTTP、算法与偏置保护故障测试，不访问实机。后两项只读对比外部 Pico 参考；GitHub CI 不依赖该外部目录。算法对比报告：[btf-algorithm-regression.json](docs/btf-algorithm-regression.json)。参考源码指纹：[btf-source-manifest.json](docs/btf-source-manifest.json)。验收记录：[BTF_VALIDATION.md](docs/BTF_VALIDATION.md)。

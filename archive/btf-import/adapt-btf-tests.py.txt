@@ -1,0 +1,10 @@
+"""Mechanical test fixture changes, confined to this independent checkout."""
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[1]
+for path in (ROOT/'tests').glob('btf_*.py'):
+    code=path.read_text(encoding='utf-8')
+    code=code.replace('from test_bias_scan import', 'from btf_test_bias_scan import')
+    code=code.replace('from redscope.device import Pico4824A', 'from legacy_fixture import Pico4824A')
+    code=code.replace("ROOT=Path(__file__).resolve().parents[1]", "from redscope.web import DATA_DIR\nROOT=DATA_DIR")
+    code=code.replace("ROOT = Path(__file__).resolve().parents[1]", "from redscope.web import DATA_DIR\nROOT=DATA_DIR")
+    path.write_text(code,encoding='utf-8',newline='\n')
